@@ -1,9 +1,9 @@
 # TODO List
 
 ## Done
-- [✅] Cookies per second (@theavebel)
-- [✅] localStorage for hashes
-- [✅] Fix main UI thread freezing issue
+- [x] Cookies per second (@theavebel)
+- [x] localStorage for hashes
+- [x] Fix main UI thread freezing issue
 
 ## Gameplay
 - [ ] Golden cookies!!!!!
