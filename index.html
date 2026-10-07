@@ -10,6 +10,7 @@
     color: #236890;
     transition: all 0.3s ease;
     position: relative;
+    display: inline-block;
 }
 h1 {
     background-color: rgba(255,255,255,0.8);
@@ -264,9 +265,10 @@ body {
         // Round the cookies because cookies are round thank you @theavebel
         cookieBalance = Math.round(cookieBalance);
         cookieBalanceDisplay.innerHTML = cookieBalance;
-        let rand = Math.random();
-        cookieBalanceDisplay.style.top = `${Math.random()*100}px`;
-        cookieBalanceDisplay.style.transform = `rotate(10.0deg)`;
+        let rand = Math.random() * 10 - Math.random() * 10;
+        let scaleRand = Math.round(Math.random() * 10) / 6;
+        cookieBalanceDisplay.style.top = `${Math.random()*10}px`;
+        cookieBalanceDisplay.style.transform = `rotate(${rand}deg) scale(${scaleRand})`;
         localStorage.setItem("cookies", cookieBalance);
     }
 
