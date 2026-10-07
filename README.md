@@ -1,3 +1,11 @@
+# Cookie Clicker But Multiplayer
+Get the experience of clicking a cookie with other humans (hopefully)! 
+
+*"How many cookies?"
+"yes" - by Stephen, probably*
+
+Made using **PubNub**
+
 # TODO List
 
 ## Done
