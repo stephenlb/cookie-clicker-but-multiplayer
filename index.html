@@ -3,8 +3,19 @@
 <title>Cookie Clicker but Multiplayer</title>
 <div id=bg-cookies><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div></div>
 <div id=layout>
-    <div id=chat>
-        <!-- Chat appears here -->
+    <div id=chat-column>
+        <div id=chat>
+            <!-- Chat appears here -->
+        </div>
+        <div id=instructions>
+            <strong>Chat commands</strong>
+            <ul>
+                <li><code>!red</code> / <code>!blue</code> join a versus team</li>
+                <li><code>!versus</code> start a 60s team battle (messages score)</li>
+                <li><code>hydrate</code> 💧 water glass, <code>golden</code>, <code>diamond</code> 💎, <code>boss</code> spawn cookies</li>
+                <li>A 6-digit hex code like <code>ff8800</code> changes the background</li>
+            </ul>
+        </div>
     </div>
     <div id=game class=grid-element>
         <div>
@@ -13,6 +24,7 @@
             <h2>🍪 <span id=cookiesPerSecond>0</span></h2>
             <h3 id=taxTimer></h3>
             <h3 id=buff></h3>
+            <h3 id=versus></h3>
             <button id=cookie><img src="assets/cookieart.png"></button>
         </div>
     </div>

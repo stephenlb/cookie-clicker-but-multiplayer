@@ -173,6 +173,18 @@
         messages: chatReceiver,
     });
 
+    // Dev only: watch-reload.sh publishes here after files are saved
+    if (["localhost", "127.0.0.1", ""].includes(location.hostname)) {
+        // The stream replays channel history, so only reload for messages
+        // stamped after this page loaded (otherwise it reloads in a loop)
+        const pageLoadedAt = Date.now();
+        pubnub.subscribe({
+            channel: "cookie-clicker-dev-reload",
+            timetoken: String(pageLoadedAt * 10000),
+            messages: msg => { if (msg && msg.reload > pageLoadedAt) location.reload(); },
+        });
+    }
+
     const MAX_CHAT_MESSAGES = 50;
     const chatDisplay = document.getElementById("chat");
     function chatReceiver(data) {
@@ -201,10 +213,100 @@
         // Per message, plus per word and per character once those upgrades are owned
         const wordCount = message.split(/\s+/).filter(Boolean).length;
         addCookies(chatMessageValue() + chatWordValue() * wordCount + chatCharValue() * message.length);
+        chatSpawnTriggers(message);
+        versusChat(user, message);
+        hydrateAlert(message);
         const match = message.match(/[a-fA-F0-9]{6}/);
         if (match) {
             document.body.style.backgroundColor = `#${match[0]}`;
         }
+    }
+
+    // A lowercase "hydrate" in chat takes over the screen for a few seconds (click to dismiss)
+    const HYDRATE_ALERT_MS = 4000;
+    let hydrateAlertEl = null;
+    let hydrateAlertTimer = 0;
+    function hydrateAlert(message) {
+        if (!message.includes("hydrate")) return;
+        if (!hydrateAlertEl) {
+            hydrateAlertEl = document.createElement("div");
+            hydrateAlertEl.id = "hydrate-alert";
+            hydrateAlertEl.textContent = "HYDRATE SENT FROM YOUTUBE";
+            hydrateAlertEl.addEventListener("click", () => hydrateAlertEl.classList.remove("open"));
+            document.body.append(hydrateAlertEl);
+        }
+        hydrateAlertEl.classList.add("open");
+        clearTimeout(hydrateAlertTimer);
+        hydrateAlertTimer = setTimeout(() => hydrateAlertEl.classList.remove("open"), HYDRATE_ALERT_MS);
+    }
+
+    // Chat keywords spawn cookies, with a per-keyword cooldown so spam cannot flood the screen
+    const CHAT_SPAWN_COOLDOWN_MS = 10000;
+    const chatSpawns = [
+        { pattern: /\bhydrat(e|ed|ion)\b|[💧🚰🚿💦🌊🥛🧋🍼]/iu, spawn: () => spawnWaterGlass(), last: 0 },
+        { pattern: /\bboss\b/i,             spawn: () => spawnBossCookie(), last: 0 },
+        { pattern: /\bgolden\b/i,           spawn: () => spawnGoldenCookie(), last: 0 },
+        { pattern: /\bdiamonds?\b|💎/iu,     spawn: () => spawnDiamondCookie(), last: 0 },
+    ];
+    function chatSpawnTriggers(message) {
+        const now = Date.now();
+        for (const entry of chatSpawns) {
+            if (!entry.pattern.test(message) || now - entry.last < CHAT_SPAWN_COOLDOWN_MS) continue;
+            entry.last = now;
+            entry.spawn();
+        }
+    }
+
+    // Versus: chat picks a team with !red / !blue, then !versus starts a round.
+    // While a round runs, each message scores for its sender's team (1 point plus 1 per word, up to 5).
+    // The winning team earns the room a cookie prize.
+    const VERSUS_ROUND_S = 60;
+    const VERSUS_TEAMS = { red: '🔴 Red', blue: '🔵 Blue' };
+    const versusDisplay = document.getElementById('versus');
+    const versusMembers = new Map(); // lowercased chat user -> team
+    let versus = null; // { red, blue, left } while a round is running
+    function renderVersus() {
+        if (!versus) { versusDisplay.textContent = ''; return; }
+        versusDisplay.textContent = `⚔️ ${VERSUS_TEAMS.red} ${versus.red} vs ${versus.blue} ${VERSUS_TEAMS.blue} (${versus.left}s)`;
+    }
+    function startVersus() {
+        if (versus) return false;
+        versus = { red: 0, blue: 0, left: VERSUS_ROUND_S };
+        renderVersus();
+        const timer = setInterval(() => {
+            if (--versus.left > 0) return renderVersus();
+            clearInterval(timer);
+            endVersus();
+        }, 1000);
+        showFloatingText('golden-bonus', 'VERSUS! Chat: !red or !blue', window.innerWidth / 2, window.innerHeight / 2);
+        return true;
+    }
+    function endVersus() {
+        const { red, blue } = versus;
+        versus = null;
+        const winner = red === blue ? null : red > blue ? 'red' : 'blue';
+        if (winner) {
+            const prize = Decimal.max(1000, cookieBalance.times(0.05).round());
+            addCookies(prize);
+            versusDisplay.textContent = `🏆 ${VERSUS_TEAMS[winner]} wins ${Math.max(red, blue)}-${Math.min(red, blue)}! +${fmt(prize)} 🍪`;
+        } else {
+            versusDisplay.textContent = `🤝 Draw at ${red}-${blue}`;
+        }
+        setTimeout(() => { if (!versus) versusDisplay.textContent = ''; }, 8000);
+    }
+    function versusChat(user, message) {
+        const key = user.toLowerCase();
+        const command = message.trim().match(/^!(red|blue|versus)\b/i);
+        if (command) {
+            const name = command[1].toLowerCase();
+            if (name === 'versus') startVersus();
+            else versusMembers.set(key, name);
+            return;
+        }
+        const team = versusMembers.get(key);
+        if (!versus || !team) return;
+        versus[team] += Math.min(5, 1 + message.split(/\s+/).filter(Boolean).length);
+        renderVersus();
     }
 
     function addCookies(cookies=1) {
@@ -262,9 +364,17 @@
     // Golden cookies appear at random spots for a few seconds; click one for a bonus
     const GOLDEN_SIZE = 80;
     const GOLDEN_LIFETIME = 8000;
+    // Diamond cookies are rarer and faster to vanish, but pay out far more
+    const DIAMOND_LIFETIME = 4000;
     function spawnGoldenCookie() {
+        spawnBonusCookie('golden-cookie', GOLDEN_LIFETIME, 0.1, 100);
+    }
+    function spawnDiamondCookie() {
+        spawnBonusCookie('golden-cookie diamond-cookie', DIAMOND_LIFETIME, 0.5, 5000);
+    }
+    function spawnBonusCookie(className, lifetime, balanceShare, minBonus) {
         const golden = document.createElement('button');
-        golden.className = 'golden-cookie';
+        golden.className = className;
         golden.style.left = `${Math.random() * (window.innerWidth - GOLDEN_SIZE)}px`;
         golden.style.top = `${Math.random() * (window.innerHeight - GOLDEN_SIZE)}px`;
 
@@ -272,12 +382,12 @@
             golden.classList.add('leaving');
             setTimeout(() => golden.remove(), 400);
         };
-        const expire = setTimeout(dismiss, GOLDEN_LIFETIME);
+        const expire = setTimeout(dismiss, lifetime);
 
         golden.addEventListener('mousedown', event => {
             event.stopPropagation(); // not a regular cookie click
             clearTimeout(expire);
-            const bonus = Decimal.max(100, cookieBalance.times(0.1).round());
+            const bonus = Decimal.max(minBonus, cookieBalance.times(balanceShare).round());
             addCookies(bonus);
             const pop = document.createElement('div');
             pop.className = 'golden-bonus';
@@ -428,6 +538,13 @@
         }, 15000 + Math.random() * 30000);
     }
     scheduleGoldenCookie();
+    function scheduleDiamondCookie() {
+        setTimeout(() => {
+            spawnDiamondCookie();
+            scheduleDiamondCookie();
+        }, 90000 + Math.random() * 120000);
+    }
+    scheduleDiamondCookie();
 
     // A glass of water now and then: drink it (click) to be Hydrated, which multiplies all cookie gains
     const HYDRATED_MULTIPLIER = 2;
@@ -471,7 +588,7 @@
     let taxCountdown = TAX_INTERVAL_S;
     const taxRate = () => 0.03 - 0.005 * level('loophole');
     const evasionChance = () => 0.15 * level('evasion');
-    // Dodge taxes too often and the IRS cookie shows up for an audit. Paying a tax cools suspicion.
+    // Dodge taxes too often and the IRS (Internal Cookie Service) cookie shows up for an audit. Paying a tax cools suspicion.
     const AUDIT_THRESHOLD = 3;
     let suspicion = 0;
     let evadedTotal = D(0);
@@ -483,13 +600,13 @@
             maxHp: 20,
             timeMs: 8000,
             onWin: event => {
-                showFloatingText('golden-bonus', 'IRS shooed away! Case closed.', event.clientX, event.clientY);
+                showFloatingText('golden-bonus', 'Internal Cookie Service (IRS) shooed away! Case closed.', event.clientX, event.clientY);
             },
             onLose: (x, y) => {
                 // Back taxes plus a 25% fine
                 const bill = Decimal.min(cookieBalance, Decimal.max(100, owed.times(1.25).round()));
                 setBalance(cookieBalance.minus(bill));
-                showFloatingText('attack-bonus', `IRS audit! Back taxes + fine: ${fmt(bill)} 🍪`, x, y);
+                showFloatingText('attack-bonus', `Internal Cookie Service audit! Back taxes + fine: ${fmt(bill)} 🍪`, x, y);
             },
         });
     }
@@ -504,7 +621,7 @@
             if (++suspicion >= AUDIT_THRESHOLD && callIrs()) {
                 suspicion = 0;
                 evadedTotal = D(0);
-                showFloatingText('attack-bonus', 'The IRS noticed... 🧾', window.innerWidth / 2, window.innerHeight / 2 + 40);
+                showFloatingText('attack-bonus', 'The Internal Cookie Service noticed... 🧾', window.innerWidth / 2, window.innerHeight / 2 + 40);
             }
             return;
         }
@@ -536,24 +653,29 @@
         const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
         return end > 80 ? cut.slice(0, end + 1) : cut.replace(/\s+\S*$/, '') + '…';
     }
+    let speechHideTimer;
+    function sayInSpeech(heading, body) {
+        speech.replaceChildren();
+        const title = document.createElement('strong');
+        title.textContent = heading;
+        const text = document.createElement('span');
+        text.textContent = body;
+        speech.append(title, text);
+
+        const rect = cookie.getBoundingClientRect();
+        speech.style.left = `${rect.left + rect.width / 2}px`;
+        speech.style.top = `${Math.min(rect.bottom + 14, window.innerHeight - speech.offsetHeight - 8)}px`;
+        speech.classList.add('visible');
+        clearTimeout(speechHideTimer);
+        speechHideTimer = setTimeout(() => speech.classList.remove('visible'), SPEECH_VISIBLE_MS);
+    }
     async function cookieSpeak() {
         try {
             const res = await fetch('https://en.wikipedia.org/api/rest_v1/page/random/summary');
             if (!res.ok) return;
             const page = await res.json();
             if (page.type !== 'standard' || !page.extract) return; // skip disambiguation pages
-            speech.replaceChildren();
-            const title = document.createElement('strong');
-            title.textContent = page.title;
-            const text = document.createElement('span');
-            text.textContent = shorten(page.extract);
-            speech.append(title, text);
-
-            const rect = cookie.getBoundingClientRect();
-            speech.style.left = `${rect.left + rect.width / 2}px`;
-            speech.style.top = `${Math.min(rect.bottom + 14, window.innerHeight - speech.offsetHeight - 8)}px`;
-            speech.classList.add('visible');
-            setTimeout(() => speech.classList.remove('visible'), SPEECH_VISIBLE_MS);
+            sayInSpeech(page.title, shorten(page.extract));
         } catch (err) {
             // offline or blocked: the cookie just stays quiet
         }
@@ -561,7 +683,55 @@
     setTimeout(cookieSpeak, 3000);
     setInterval(cookieSpeak, SPEECH_INTERVAL_MS);
 
+    // Milestones: each time the balance reaches a new power of ten, the cookie says good job
+    const milestoneOf = balance => balance.lt(10) ? 0 : Math.floor(balance.log10());
+    let lastMilestone = milestoneOf(cookieBalance);
+    setInterval(() => {
+        const reached = milestoneOf(cookieBalance);
+        if (reached > lastMilestone) sayInSpeech('good job', `You reached ${fmt(D(10).pow(reached))} cookies!`);
+        lastMilestone = Math.max(lastMilestone, reached);
+    }, 500);
+
+    // Synthesized crunch: a burst of filtered noise plus a short pitched thump, varied per click
+    let audioCtx = null;
+    let noiseBuffer = null;
+    function playClickSound() {
+        try {
+            audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const now = audioCtx.currentTime;
+            if (!noiseBuffer) {
+                noiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+                const data = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+            }
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = noiseBuffer;
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 1500 + Math.random() * 2000;
+            const noiseGain = audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.5, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+            noise.connect(filter).connect(noiseGain).connect(audioCtx.destination);
+            noise.start(now);
+
+            const osc = audioCtx.createOscillator();
+            const oscGain = audioCtx.createGain();
+            osc.frequency.setValueAtTime(260 + Math.random() * 80, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.1);
+            oscGain.gain.setValueAtTime(0.35, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+            osc.connect(oscGain).connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.12);
+        } catch (err) {
+            // audio unavailable: stay silent
+        }
+    }
+
     function animateClick(event) {
+        playClickSound();
         cookie.classList.remove('pressed');
         void cookie.offsetWidth; // restart animation
         cookie.classList.add('pressed');
@@ -573,7 +743,82 @@
         pop.style.setProperty('--r', `${Math.random() * 80 - 40}deg`);
         document.body.appendChild(pop);
         pop.addEventListener('animationend', () => pop.remove());
+
+        const spawn = (className, x, y, text) => {
+            const el = document.createElement('div');
+            el.className = className;
+            el.style.left = `${x}px`;
+            el.style.top = `${y}px`;
+            if (text) el.textContent = text;
+            document.body.appendChild(el);
+            el.addEventListener('animationend', () => el.remove());
+            return el;
+        };
+        spawn('click-ring', event.clientX, event.clientY);
+        spawn('click-number', event.clientX + Math.random() * 40 - 20, event.clientY - 20, `+${fmt(clickValue())}`);
+        for (let i = 0; i < 6; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 40 + Math.random() * 50;
+            const crumb = spawn('click-crumb', event.clientX, event.clientY);
+            crumb.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+            crumb.style.setProperty('--dy', `${Math.sin(angle) * dist + 20}px`);
+        }
     }
+
+    // Kevin pops up every few minutes with a task. Finish it before time runs out for a cookie reward.
+    const KEVIN_TASK_MS = 20000;
+    const kevinTasks = [
+        { text: n => `Click ${n} times in ${KEVIN_TASK_MS / 1000}s!`,   goal: () => 20 + Math.floor(Math.random() * 20), progress: 'clicks' },
+        { text: n => `Earn ${fmt(n)} 🍪 in ${KEVIN_TASK_MS / 1000}s!`,  goal: () => Decimal.max(50, cookieBalance.times(0.02).round()), progress: 'earned' },
+    ];
+    let kevin = null;
+    function spawnKevin() {
+        if (kevin) return;
+        const task = kevinTasks[Math.floor(Math.random() * kevinTasks.length)];
+        const goal = task.goal();
+        const card = document.createElement('div');
+        card.id = 'kevin';
+        card.addEventListener('mousedown', event => event.stopPropagation()); // not a regular cookie click
+        const title = document.createElement('strong');
+        title.textContent = '🧑 Kevin says:';
+        const body = document.createElement('div');
+        body.textContent = task.text(goal);
+        const status = document.createElement('div');
+        card.append(title, body, status);
+        document.body.appendChild(card);
+
+        const startBalance = cookieBalance;
+        const deadline = Date.now() + KEVIN_TASK_MS;
+        kevin = { clicks: 0 };
+        const finish = (done) => {
+            clearInterval(tick);
+            if (done) {
+                const reward = Decimal.max(500, cookieBalance.times(0.05).round());
+                addCookies(reward);
+                title.textContent = '🧑 Kevin: nice work!';
+                status.textContent = `+${fmt(reward)} 🍪`;
+            } else {
+                title.textContent = '🧑 Kevin: disappointing.';
+                status.textContent = 'Task failed.';
+            }
+            kevin = null;
+            setTimeout(() => card.remove(), 3000);
+        };
+        const tick = setInterval(() => {
+            const have = task.progress === 'clicks' ? D(kevin.clicks) : cookieBalance.minus(startBalance);
+            const left = Math.ceil((deadline - Date.now()) / 1000);
+            status.textContent = `${fmt(Decimal.max(0, have))} / ${fmt(goal)} (${left}s)`;
+            if (have.gte(goal)) finish(true);
+            else if (left <= 0) finish(false);
+        }, 250);
+    }
+    function scheduleKevin() {
+        setTimeout(() => {
+            spawnKevin();
+            scheduleKevin();
+        }, 120000 + Math.random() * 120000);
+    }
+    scheduleKevin();
 
     // Hack tool (dev panel): press ` (backtick) to toggle, or use window.hack in the console
     const hack = {
@@ -581,10 +826,13 @@
         set: n => setBalance(D(n)),
         spawn: {
             golden: spawnGoldenCookie,
+            diamond: spawnDiamondCookie,
             attack: spawnAttackCookie,
             boss: spawnBossCookie,
             water: spawnWaterGlass,
             irs: callIrs,
+            kevin: spawnKevin,
+            versus: startVersus,
         },
         tax: () => collectTax(),
         maxUpgrades: () => {
@@ -615,10 +863,13 @@
         ['Give', () => hack.give(amount.value)],
         ['Set balance', () => hack.set(amount.value)],
         ['Golden', hack.spawn.golden],
+        ['Diamond', hack.spawn.diamond],
         ['Attack', hack.spawn.attack],
         ['Boss', hack.spawn.boss],
         ['Water', hack.spawn.water],
         ['IRS', hack.spawn.irs],
+        ['Kevin', hack.spawn.kevin],
+        ['Versus', hack.spawn.versus],
         ['Collect tax', hack.tax],
         ['Max upgrades', hack.maxUpgrades],
         ['Reset upgrades', hack.resetUpgrades],
@@ -636,6 +887,7 @@
 
     document.body.addEventListener('mousedown', event => {
         animateClick(event);
+        if (kevin) kevin.clicks++;
         if (clickValue() > 1) addCookies(clickValue() - 1);
         click(event);
     });

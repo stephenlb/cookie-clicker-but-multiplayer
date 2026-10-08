@@ -19,19 +19,19 @@ Made using **PubNub**
 - [x] live chat
 
 ## Gameplay
-- [ ] Glass of water
-- [ ] Cookie attack
+- [x] Glass of water
+- [x] Cookie attack
 - [x] GOLDEN COOKIES!!!!!
-- [ ] Cookie BOSSES @aasky_
-- [ ] Cookie Taxes - @OmG-bt9rm
+- [x] Cookie BOSSES @aasky_
+- [x] Cookie Taxes - @OmG-bt9rm
 - [ ] Tax evasion - @Torva.Messor
 - [ ] auto-clicker PRO_Stumblr
 - [ ] tools: auto-generate cookie
 - [ ] different types of cookies
 - [ ] different types of cookies and upgrades
 - [ ] add an upgrade where the chocolate chips are DOUBLE and it gives 2x the clicky
-- [ ] guy named kevin who gives you task every hour
-- [ ] versus game mode
+- [x] guy named kevin who gives you task every few minutes
+- [x] versus game mode (chat: !red !blue !versus)
 - [ ] array of rates of cookie production []
 - [ ] tototalCookieVelocity
 - [ ] game state with currnet cookie balance
@@ -77,6 +77,9 @@ Made using **PubNub**
 ## Code
 - [ ] organize code
 - [ ] https://popcat.click/ inspiration
+
+## Wiki
+- [MCP](wiki/MCP.md) - Model Cookie Protocol
 
 ## License
 
