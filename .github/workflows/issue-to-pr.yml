@@ -1,0 +1,590 @@
+name: Issue to PR
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: issue-to-pr-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  ISSUE_NUMBER: ${{ github.event.issue.number }}
+  # Unique per attempt so re-runs never collide with (or overwrite) an earlier branch
+  BRANCH: claude/issue-${{ github.event.issue.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+  BASE: ${{ github.event.repository.default_branch }}
+  # Optional PAT lets pushes modify .github/workflows and PRs trigger CI; falls back to GITHUB_TOKEN
+  GH_TOKEN: ${{ secrets.PUSH_TOKEN || github.token }}
+  # Anthropic API auth (leave the secret unset when using Bedrock)
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  # Bedrock auth (set CLAUDE_CODE_USE_BEDROCK=1 as a repo secret to enable)
+  CLAUDE_CODE_USE_BEDROCK: ${{ secrets.CLAUDE_CODE_USE_BEDROCK }}
+  AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+  ANTHROPIC_SMALL_FAST_MODEL: ${{ secrets.ANTHROPIC_SMALL_FAST_MODEL }}
+  # Agent CLI: claude (default), opencode, codex, or pi. Set the AGENT_CLI repo variable to switch.
+  AGENT_CLI: ${{ vars.AGENT_CLI || 'claude' }}
+  # OpenAI auth for codex (and opencode with an OpenAI model)
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  # Optional model for opencode/pi ("provider/model") or codex; claude uses ANTHROPIC_MODEL
+  AGENT_MODEL: ${{ secrets.AGENT_MODEL }}
+  # Repo variables (Settings > Variables) tune the workflow; defaults apply when unset
+  REVIEW_ROUNDS: ${{ vars.REVIEW_ROUNDS || '2' }}
+  MAX_DIFF_LINES: ${{ vars.MAX_DIFF_LINES || '500' }}
+  MAX_DIFF_FILES: ${{ vars.MAX_DIFF_FILES || '20' }}
+  # Set the AUTO_MERGE repo variable to 1 to always merge, skipping the eval and guards (dry-run still wins)
+  AUTO_MERGE: ${{ vars.AUTO_MERGE }}
+  # Label an issue with "dry-run" to open the PR but never auto-merge it
+  DRY_RUN: ${{ contains(github.event.issue.labels.*.name, 'dry-run') }}
+  # Hidden marker on pipeline PR comments so pr-comment-chat.yml ignores them
+  MARKER: "<!-- openpearl -->"
+  GUIDANCE: "If CLAUDE.md or AGENTS.md exists in the repository root, read it first and follow the conventions it describes."
+  TOOLS_EDIT: "Read,Edit,Write,Glob,Grep,Bash(git diff:*),Bash(git status:*),Bash(git log:*),Bash(ls:*),Bash(npm:*),Bash(npx:*),Bash(cp:*),Bash(identify:*),Bash(convert:*)"
+  REVIEW_PROMPT: "Code review the changes on this branch: run 'git diff origin/${{ github.event.repository.default_branch }}...HEAD'. Look for correctness bugs, missing tests, security issues, and clear maintainability problems. Output a concise markdown list of concrete findings with file and line, most severe first. If there is nothing worth fixing, output exactly: NO ISSUES"
+  TOOLS_REVIEW: "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git status:*)"
+
+jobs:
+  implement:
+    # Issue bodies are untrusted prompt input: only run for trusted authors.
+    if: contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Comment that processing started
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          printf "Started processing this issue. I'll post status updates here as work progresses. See the [workflow run](%s).\n\n%s\n" \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$MARKER" \
+            | gh issue comment "$ISSUE_NUMBER" --body-file -
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PUSH_TOKEN || github.token }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install agent CLI
+        run: |
+          case "$AGENT_CLI" in
+            claude) npm install -g @anthropic-ai/claude-code ;;
+            opencode) npm install -g opencode-ai ;;
+            codex) npm install -g @openai/codex ;;
+            pi) npm install -g @mariozechner/pi-coding-agent ;;
+            *) echo "Unsupported AGENT_CLI '$AGENT_CLI' (use claude, opencode, codex, or pi)"; exit 1 ;;
+          esac
+
+      - name: Install image tools
+        run: |
+          # ImageMagick lets the agent crop, resize and convert attached images (e.g. favicons)
+          { command -v convert >/dev/null && command -v identify >/dev/null; } || { sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; }
+          # The images come from untrusted issue text: disable risky coders
+          pol=$(ls -d /etc/ImageMagick-*/ | head -n1)policy.xml
+          sudo sed -i 's#</policymap>#<policy domain="coder" rights="none" pattern="{MSL,MVG,URL,HTTPS,HTTP,FTP,EPHEMERAL,TEXT,LABEL,PS,PDF,EPS,XPS,SVG}" />\n</policymap>#' "$pol"
+
+      - name: Install agent wrapper
+        run: |
+          # Usage: agent-retry <read|edit> <prompt> [max-turns]
+          # Runs the selected agent CLI with read-only or edit permissions and prints its final answer.
+          # Retries transient failures (API errors, rate limits) with backoff.
+          # Output is buffered so a failed attempt never leaks partial output.
+          mkdir -p "$RUNNER_TEMP/bin"
+          cat > "$RUNNER_TEMP/bin/agent-retry" <<'SCRIPT'
+          #!/usr/bin/env bash
+          mode=$1 prompt=$2 turns=$3
+          out=$(mktemp)
+          run_agent() {
+            case "$AGENT_CLI" in
+              claude)
+                args=(-p "$prompt")
+                if [ "$mode" = edit ]; then
+                  args+=(--permission-mode acceptEdits --allowedTools "$TOOLS_EDIT,Read(/$RUNNER_TEMP/**)")
+                else
+                  args+=(--allowedTools "$TOOLS_REVIEW,Read(/$RUNNER_TEMP/**)")
+                fi
+                [ -n "$turns" ] && args+=(--max-turns "$turns")
+                claude "${args[@]}"
+                ;;
+              opencode)
+                # external_directory lets the agent read the issue/review files in $RUNNER_TEMP;
+                # the later --output deny rules keep git diff/log from writing files.
+                ext="\"external_directory\":{\"$RUNNER_TEMP/**\":\"allow\"}"
+                if [ "$mode" = edit ]; then
+                  export OPENCODE_PERMISSION='{"edit":"allow",'"$ext"',"bash":{"*":"deny","git diff*":"allow","git log*":"allow","git status*":"allow","ls*":"allow","npm*":"allow","npx*":"allow","cp *":"allow","identify *":"allow","convert *":"allow","git diff*--output*":"deny","git log*--output*":"deny"},"webfetch":"deny"}'
+                else
+                  export OPENCODE_PERMISSION='{"edit":"deny","webfetch":"deny",'"$ext"',"bash":{"*":"deny","git diff*":"allow","git log*":"allow","git status*":"allow","git diff*--output*":"deny","git log*--output*":"deny"}}'
+                fi
+                args=(run)
+                [ -n "$AGENT_MODEL" ] && args+=(-m "$AGENT_MODEL")
+                opencode "${args[@]}" "$prompt"
+                ;;
+              codex)
+                export CODEX_API_KEY="${CODEX_API_KEY:-$OPENAI_API_KEY}"
+                local sandbox=read-only last rc
+                [ "$mode" = edit ] && sandbox=workspace-write
+                last=$(mktemp)
+                args=(exec --sandbox "$sandbox" --skip-git-repo-check --output-last-message "$last")
+                [ -n "$AGENT_MODEL" ] && args+=(-m "$AGENT_MODEL")
+                codex "${args[@]}" "$prompt" >&2
+                rc=$?
+                [ "$rc" -eq 0 ] && cat "$last"
+                rm -f "$last"
+                return $rc
+                ;;
+              pi)
+                # Pi has no permission prompts: review mode gets read-only tools (no shell)
+                local tools=read,grep,find,ls
+                [ "$mode" = edit ] && tools=read,bash,edit,write,grep,find,ls
+                # no shell in review mode, so append the branch diff to the prompt
+                if [ "$mode" != edit ] && [ -n "$BASE" ]; then
+                  prompt+=$'\n\nOutput of git diff origin/'"$BASE"$'...HEAD:\n'"$(git diff "origin/$BASE...HEAD" 2>&1)"
+                fi
+                args=(-p --tools "$tools")
+                [ -n "$AGENT_MODEL" ] && args+=(--model "$AGENT_MODEL")
+                pi "${args[@]}" "$prompt"
+                ;;
+            esac
+          }
+          for attempt in 1 2 3; do
+            if run_agent > "$out"; then
+              cat "$out"; rm -f "$out"; exit 0
+            fi
+            echo "$AGENT_CLI failed (attempt $attempt/3)" >&2
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 20))
+          done
+          rm -f "$out"
+          exit 1
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/bin/agent-retry"
+
+          # Usage: review-clean <file>; exits 0 if the last non-blank line is the NO ISSUES sentinel.
+          # Tolerates case, markdown wrapping and trailing punctuation (e.g. "**No issues**.").
+          cat > "$RUNNER_TEMP/bin/review-clean" <<'SCRIPT'
+          #!/usr/bin/env bash
+          last=$(grep -v '^[[:space:]]*$' "$1" | tail -n 1 | sed -E 's/^[][:space:]*_`]+//; s/[][:space:]*_`.!]+$//' | tr '[:lower:]' '[:upper:]')
+          [ "$last" = "NO ISSUES" ]
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/bin/review-clean"
+
+          # Usage: issue-say --body <text> | --body-file - (text on stdin)
+          # Comments on the issue carry the hidden marker so pr-comment-chat.yml ignores them.
+          cat > "$RUNNER_TEMP/bin/issue-say" <<'SCRIPT'
+          #!/usr/bin/env bash
+          if [ "$1" = --body ]; then body=$2; else body=$(cat); fi
+          printf '%s\n\n%s\n' "$body" "$MARKER" | gh issue comment "$ISSUE_NUMBER" --body-file -
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/bin/issue-say"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Configure git
+        run: |
+          git config user.name "claude[bot]"
+          git config user.email "claude[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+
+      - name: Comment with task summary
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          printf '# %s\n\n%s\n' "$ISSUE_TITLE" "$ISSUE_BODY" > "$RUNNER_TEMP/task.md"
+          agent-retry read "Read the GitHub issue in $RUNNER_TEMP/task.md and summarize the work to be implemented in 2-4 concise markdown bullet points. Output only the bullets." 5 > "$RUNNER_TEMP/task-summary.md" \
+            && [ -s "$RUNNER_TEMP/task-summary.md" ] \
+            || echo "_Summary unavailable; see the issue description._" > "$RUNNER_TEMP/task-summary.md"
+          issue-say --body-file - <<EOF
+          ## Task summary
+
+          $(cat "$RUNNER_TEMP/task-summary.md")
+          EOF
+
+      - name: Implement issue
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          # Read-only token for image downloads; the push PAT is not needed here
+          DL_TOKEN: ${{ github.token }}
+        run: |
+          issue-say --body "Analyzing the issue and implementing changes..."
+          # Download images attached to the issue so Claude can view them with Read
+          img_dir="$RUNNER_TEMP/issue-images"
+          mkdir -p "$img_dir"
+          command -v file >/dev/null || { echo "'file' is required for image type detection"; exit 1; }
+          # In private repos, user-attachments URLs 404 for API tokens; the rendered issue HTML carries short-lived signed URLs
+          body_html=$(GH_TOKEN="$DL_TOKEN" gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" -H "Accept: application/vnd.github.full+json" -q .body_html || true)
+          n=0
+          while read -r url; do
+            n=$((n + 1))
+            [ "$n" -le 10 ] || break
+            tmp="$img_dir/download-$n"
+            if ! curl -fsSL --max-time 60 --max-filesize 10485760 -H "Authorization: Bearer $DL_TOKEN" -o "$tmp" "$url"; then
+              rm -f "$tmp"
+              uuid=$(printf '%s' "$url" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -n1 || true)
+              signed=""
+              [ -z "$uuid" ] || signed=$(printf '%s' "$body_html" | grep -oE "https://private-user-images\.githubusercontent\.com/[^\"]*$uuid[^\"]*" | head -n1 | sed 's/&amp;/\&/g' || true)
+              if [ -z "$signed" ] || ! curl -fsSL --max-time 60 --max-filesize 10485760 -o "$tmp" "$signed"; then
+                echo "Could not download $url"; rm -f "$tmp"; continue
+              fi
+            fi
+            if [ "$(stat -c %s "$tmp")" -gt 10485760 ]; then
+              echo "Skipping $url: larger than 10 MiB"; rm -f "$tmp"; continue
+            fi
+            case "$(file -b --mime-type "$tmp")" in
+              image/png) ext=png ;;
+              image/jpeg) ext=jpg ;;
+              image/gif) ext=gif ;;
+              image/webp) ext=webp ;;
+              *) echo "Skipping $url: not a supported image"; rm -f "$tmp"; continue ;;
+            esac
+            mv "$tmp" "$img_dir/image-$n.$ext"
+          done < <(printf '%s' "$ISSUE_BODY" \
+            | grep -oE 'https://(github\.com/user-attachments/assets/|user-images\.githubusercontent\.com/|private-user-images\.githubusercontent\.com/)[^")> ]+' \
+            | sort -u)
+          {
+            echo "You are implementing GitHub issue #$ISSUE_NUMBER in this repository."
+            echo "Modify the codebase to resolve it. Follow existing conventions, add or update tests where appropriate."
+            echo "Do not run git commit or git push; that is handled for you."
+            echo "$GUIDANCE"
+            echo
+            echo "# $ISSUE_TITLE"
+            echo
+            echo "$ISSUE_BODY"
+            images=$(ls "$img_dir")
+            if [ -n "$images" ]; then
+              echo
+              echo "# Attached images"
+              echo "The issue references images, downloaded to the files below. Use Read to view them."
+              for f in $images; do echo "- $img_dir/$f ($(identify -format '%wx%h' "$img_dir/$f[0]" || echo 'unknown size'))"; done
+              echo "When the issue asks to use an attached image (e.g. as a favicon or logo), use that image itself: copy it into the repo and process it as needed."
+              echo "Do not substitute an existing repo image. ImageMagick (identify, convert) is available to crop, resize or convert formats."
+              echo "If the attached image cannot be used (missing, unreadable, unsuitable), say so instead of guessing or substituting another image."
+              if printf '%s\n%s' "$ISSUE_TITLE" "$ISSUE_BODY" | grep -qi favicon; then
+                echo "A favicon should be square, PNG or ICO, 32x32 to 256x256, with the <link rel=\"icon\"> type matching the file format."
+              fi
+            fi
+          } > "$RUNNER_TEMP/prompt.md"
+          agent-retry edit "$(cat "$RUNNER_TEMP/prompt.md")" 60
+
+      - name: Commit and push
+        id: commit
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            issue-say \
+              --body "The agent ran but made no changes, so no PR was opened. See the [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+            exit 0
+          fi
+          git add -A
+          git commit -m "Resolve #$ISSUE_NUMBER: $ISSUE_TITLE"
+          git push -u origin "$BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          issue-say --body "Implementation complete; changes pushed to branch \`$BRANCH\`. Opening a PR..."
+
+      - name: Open PR
+        if: steps.commit.outputs.changed == 'true'
+        id: pr
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          # Clamp to a positive integer for this and later steps
+          [[ "$REVIEW_ROUNDS" =~ ^[1-9][0-9]*$ ]] || REVIEW_ROUNDS=2
+          echo "REVIEW_ROUNDS=$REVIEW_ROUNDS" >> "$GITHUB_ENV"
+          url=$(gh pr create \
+            --base "$BASE" --head "$BRANCH" \
+            --title "$ISSUE_TITLE" \
+            --body "Closes #$ISSUE_NUMBER")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "number=${url##*/}" >> "$GITHUB_OUTPUT"
+          issue-say --body "Opened PR $url. Starting automated code review ($REVIEW_ROUNDS rounds)..."
+
+      - name: Review and fix
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          for round in $(seq 1 "$REVIEW_ROUNDS"); do
+            echo "::group::Review round $round"
+            agent-retry read "$GUIDANCE $REVIEW_PROMPT" > "$RUNNER_TEMP/review-$round.md"
+            cat "$RUNNER_TEMP/review-$round.md"
+            echo "::endgroup::"
+
+            gh pr comment "$PR_NUMBER" --body-file - <<EOF
+          ## Code review (round $round)
+
+          $(cat "$RUNNER_TEMP/review-$round.md")
+
+          $MARKER
+          EOF
+
+            if review-clean "$RUNNER_TEMP/review-$round.md"; then
+              issue-say --body "Code review round $round: no issues found."
+              break
+            fi
+
+            issue-say --body "Code review round $round found issues; applying fixes..."
+
+            echo "::group::Fix round $round"
+            agent-retry edit "$GUIDANCE Apply fixes for the findings in $RUNNER_TEMP/review-$round.md to this codebase. Skip any finding that is incorrect. Do not run git commit or git push." 40
+            echo "::endgroup::"
+
+            if [ -n "$(git status --porcelain)" ]; then
+              git add -A
+              git commit -m "Address code review feedback (round $round)"
+              git push
+            fi
+
+            # Confirm each finding from this round was fixed or deliberately skipped
+            agent-retry read "$GUIDANCE Confirm that the findings in $RUNNER_TEMP/review-$round.md are addressed in the current branch: run 'git diff origin/$BASE...HEAD' and inspect the code. Output a concise markdown list with one line per finding, each marked FIXED, SKIPPED (with the reason, e.g. the finding was incorrect) or NOT FIXED." 15 > "$RUNNER_TEMP/verify-$round.md" \
+              || echo "_Fix verification unavailable._" > "$RUNNER_TEMP/verify-$round.md"
+            cat "$RUNNER_TEMP/verify-$round.md"
+
+            gh pr comment "$PR_NUMBER" --body-file - <<EOF
+          ## Fix verification (round $round)
+
+          $(cat "$RUNNER_TEMP/verify-$round.md")
+
+          $MARKER
+          EOF
+          done
+
+      - name: Resolve merge conflicts
+        if: steps.commit.outputs.changed == 'true'
+        id: merge
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          # The base branch may have moved while the agent worked; merge it in and let the agent fix conflicts
+          git fetch origin "$BASE"
+          if git merge --no-edit "origin/$BASE"; then
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$BRANCH")" ]; then git push; fi
+            echo "No merge conflicts with $BASE."
+            exit 0
+          fi
+          git diff --name-only --diff-filter=U > "$RUNNER_TEMP/conflicts.txt"
+          if [ ! -s "$RUNNER_TEMP/conflicts.txt" ]; then
+            echo "Merge failed without conflicts"; git merge --abort || true; exit 1
+          fi
+          issue-say --body "Merge conflicts with \`$BASE\` detected; resolving..."
+          agent-retry edit "$GUIDANCE The branch has merge conflicts with origin/$BASE after running 'git merge origin/$BASE'. The conflicted files are listed in $RUNNER_TEMP/conflicts.txt. Resolve every conflict marker (<<<<<<<, =======, >>>>>>>) by editing those files so that both the intent of this branch and the changes from the base branch are preserved. Do not run git commit, git merge or git push." 40 || true
+          # Agent errors are tolerated; the marker check decides. Files deleted on one side are skipped
+          unresolved=false
+          while IFS= read -r f; do
+            if [ -f "$f" ] && grep -qE '^(<<<<<<<|=======$|>>>>>>>)' "$f"; then unresolved=true; fi
+          done < "$RUNNER_TEMP/conflicts.txt"
+          if [ "$unresolved" = "true" ]; then
+            echo "unresolved=true" >> "$GITHUB_OUTPUT"
+            git merge --abort || true
+            gh pr comment "$PR_NUMBER" --body "Could not automatically resolve merge conflicts with \`$BASE\`; manual resolution required.
+
+          $MARKER"
+            issue-say --body "Could not automatically resolve merge conflicts with \`$BASE\`. Manual resolution required."
+            exit 0
+          fi
+          # Stage only the conflicted paths; the rest of the merge is already staged
+          while IFS= read -r f; do
+            if [ -e "$f" ]; then git add -- "$f"; else git rm -q --cached -- "$f" || true; fi
+          done < "$RUNNER_TEMP/conflicts.txt"
+          git commit -m "Merge $BASE and resolve conflicts"
+          git push
+          gh pr comment "$PR_NUMBER" --body "Resolved merge conflicts with \`$BASE\`:
+
+          $(sed 's/^/- /' "$RUNNER_TEMP/conflicts.txt")
+
+          $MARKER"
+          issue-say --body "Merge conflicts with \`$BASE\` resolved and pushed."
+
+      - name: Summarize completed work
+        if: steps.commit.outputs.changed == 'true'
+        run: |
+          # The final summary step supplies the fallback if this is empty
+          agent-retry read "Run 'git diff origin/$BASE...HEAD' and summarize the work completed in 3-6 concise markdown bullet points. Output only the bullets." 10 > "$RUNNER_TEMP/done-summary.md" || true
+
+      - name: Run project tests
+        if: steps.commit.outputs.changed == 'true'
+        id: tests
+        run: |
+          # status: pass | fail | none (no test script found)
+          status=none
+          # All pushes are done; drop checkout credentials so branch code cannot read the token from .git/config
+          git config --local --get-regexp '^http\..*\.extraheader$' | cut -d' ' -f1 | while read -r key; do
+            git config --local --unset-all "$key"
+          done || true
+          if [ -f package.json ] && node -e 'process.exit(require("./package.json").scripts?.test ? 0 : 1)'; then
+            # Run untrusted branch code without secrets or lifecycle scripts
+            clean() { env -i PATH="$PATH" HOME="$HOME" CI=true "$@"; }
+            if { [ -f package-lock.json ] && clean npm ci --ignore-scripts || clean npm install --ignore-scripts; } > "$RUNNER_TEMP/tests.md" 2>&1 \
+              && clean npm test >> "$RUNNER_TEMP/tests.md" 2>&1; then
+              status=pass
+            else
+              status=fail
+            fi
+            # Keep the tail: that is where failures are reported
+            tail -n 200 "$RUNNER_TEMP/tests.md" > "$RUNNER_TEMP/tests-tail.md"
+            mv "$RUNNER_TEMP/tests-tail.md" "$RUNNER_TEMP/tests.md"
+          else
+            echo "No test script found." > "$RUNNER_TEMP/tests.md"
+          fi
+          echo "Test status: $status" | tee -a "$RUNNER_TEMP/tests.md"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          # Tests may have generated files (node_modules, lockfiles); restore the tree so nothing leaks into later steps
+          git checkout -- .
+          git clean -fdq
+
+      - name: Eval - PR ready to auto-merge
+        if: steps.commit.outputs.changed == 'true'
+        id: eval
+        env:
+          PR_URL: ${{ steps.pr.outputs.url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          TEST_STATUS: ${{ steps.tests.outputs.status }}
+          MERGE_UNRESOLVED: ${{ steps.merge.outputs.unresolved }}
+        run: |
+          issue-say --body "Running final eval to decide whether PR $PR_URL is safe to auto-merge..."
+          # Evidence for the eval: diff stats and real test results
+          git diff --stat "origin/$BASE...HEAD" > "$RUNNER_TEMP/diffstat.md"
+
+          # Final review-only pass so the last round of fixes is also reviewed
+          # Skipped when its result is unused (dry-run or forced auto-merge)
+          final_clean=false
+          if [ "$DRY_RUN" != "true" ] && [ "$AUTO_MERGE" != "1" ]; then
+            agent-retry read "$GUIDANCE $REVIEW_PROMPT" > "$RUNNER_TEMP/review-final.md" || echo "Final review failed" > "$RUNNER_TEMP/review-final.md"
+            # Tolerate markdown, punctuation and case around the sentinel (e.g. "**NO ISSUES**.")
+            review-clean "$RUNNER_TEMP/review-final.md" && final_clean=true
+          fi
+
+          # Deterministic guard: never auto-merge changes to workflows, auth/secrets, or dependency manifests
+          protected=$(git diff --name-only "origin/$BASE...HEAD" \
+            | grep -Eiv '(^|/)node_modules/' \
+            | grep -Ei '^\.github/|(^|/)(auth|secrets?|credentials?)([/._-]|$)|(^|/)\.env|(^|/)(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt|Pipfile(\.lock)?|poetry\.lock|go\.(mod|sum)|Cargo\.(toml|lock)|Gemfile(\.lock)?|pom\.xml|build\.gradle)$' || true)
+          # Deterministic guard: large diffs need a human
+          diff_files=$(git diff --name-only "origin/$BASE...HEAD" | wc -l)
+          diff_lines=$(git diff --numstat "origin/$BASE...HEAD" | awk '{ if ($1 != "-") n += $1 + $2 } END { print n + 0 }')
+
+          # Fail closed on invalid limits
+          [[ "$MAX_DIFF_FILES" =~ ^[1-9][0-9]*$ ]] || MAX_DIFF_FILES=20
+          [[ "$MAX_DIFF_LINES" =~ ^[1-9][0-9]*$ ]] || MAX_DIFF_LINES=500
+
+          verdict=NO
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Auto-merge skipped: dry-run label is set" > "$RUNNER_TEMP/eval.md"
+          elif [ "$MERGE_UNRESOLVED" = "true" ]; then
+            echo "Auto-merge blocked: unresolved merge conflicts with $BASE" > "$RUNNER_TEMP/eval.md"
+          elif [ "$AUTO_MERGE" = "1" ]; then
+            echo "Auto-merge forced: AUTO_MERGE=1 (eval and guards skipped)" > "$RUNNER_TEMP/eval.md"
+            verdict=YES
+          elif [ -n "$protected" ]; then
+            printf 'Auto-merge blocked: diff touches sensitive paths:\n%s\n' "$protected" > "$RUNNER_TEMP/eval.md"
+          elif [ "$diff_files" -gt "$MAX_DIFF_FILES" ] || [ "$diff_lines" -gt "$MAX_DIFF_LINES" ]; then
+            echo "Auto-merge blocked: diff is too large ($diff_files files, $diff_lines lines; limits $MAX_DIFF_FILES files, $MAX_DIFF_LINES lines)" > "$RUNNER_TEMP/eval.md"
+          elif [ "$TEST_STATUS" = "fail" ]; then
+            echo "Auto-merge blocked: project tests failed" > "$RUNNER_TEMP/eval.md"
+          elif [ "$final_clean" != "true" ]; then
+            echo "Auto-merge blocked: final review did not report NO ISSUES" > "$RUNNER_TEMP/eval.md"
+          elif agent-retry read "$(cat .github/workflows/evals/pr-ready-to-merge.md)
+          $(cat .github/evals-extra.md 2>/dev/null)
+
+          Base branch: origin/$BASE
+          Issue file: $RUNNER_TEMP/task.md
+          Review files: $RUNNER_TEMP/review-*.md (review-final.md is the review of the fixed code and takes precedence)
+          Test results file: $RUNNER_TEMP/tests.md (test status: $TEST_STATUS)
+          Diff stats file: $RUNNER_TEMP/diffstat.md" 20 > "$RUNNER_TEMP/eval.md"; then
+            # Fail closed: only a final line of exactly YES (surrounding whitespace ignored) merges
+            last=$(grep -v '^[[:space:]]*$' "$RUNNER_TEMP/eval.md" | tail -n 1 | tr -d '[:space:]')
+            [ "$last" = "YES" ] && verdict=YES
+          else
+            echo "Eval command failed" > "$RUNNER_TEMP/eval.md"
+          fi
+          cat "$RUNNER_TEMP/eval.md"
+
+          gh pr comment "$PR_NUMBER" --body-file - <<EOF
+          ## Auto-merge eval
+
+          $(cat "$RUNNER_TEMP/eval.md")
+
+          $MARKER
+          EOF
+
+          # Label PRs for easy filtering and outcome tracking (best effort)
+          label() {
+            gh label create "$1" --color "$2" --force >/dev/null 2>&1 || true
+            gh pr edit "$PR_NUMBER" --add-label "$1" >/dev/null 2>&1 || true
+          }
+          echo "Outcome tracking: issue=$ISSUE_NUMBER pr=$PR_NUMBER verdict=$verdict dry_run=$DRY_RUN tests=$TEST_STATUS"
+          echo "merged=false" >> "$GITHUB_OUTPUT"
+
+          if [ "$verdict" = "YES" ]; then
+            issue-say --body "Auto-merge eval: YES. Waiting for CI on $PR_URL..."
+            # `gh pr checks` exits non-zero when a PR has no checks, so only watch if some exist
+            check_count=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq '.statusCheckRollup | length')
+            if { [ "$check_count" = "0" ] || gh pr checks "$PR_NUMBER" --watch --fail-fast; } \
+              && gh pr merge "$PR_NUMBER" --squash --delete-branch \
+                --subject "$(gh pr view "$PR_NUMBER" --json title --jq .title) (#$PR_NUMBER)" \
+                --body ""; then
+              # explicit empty --body drops the auto-generated Co-authored-by trailer
+              label auto-merged 0e8a16
+              echo "merged=true" >> "$GITHUB_OUTPUT"
+              issue-say --body "PR Auto-Merged: $PR_URL"
+            else
+              label needs-human d93f0b
+              issue-say --body "Auto-merge failed (checks failing or merge blocked). PR Ready for Review: $PR_URL"
+            fi
+          else
+            label needs-human d93f0b
+            issue-say --body "Auto-merge eval: NO. PR Ready for Review: $PR_URL
+
+          Reason:
+
+          $(cat "$RUNNER_TEMP/eval.md")"
+          fi
+
+      - name: Comment with summary of work completed
+        if: steps.commit.outputs.changed == 'true' && !cancelled()
+        env:
+          PR_URL: ${{ steps.pr.outputs.url }}
+          MERGED: ${{ steps.eval.outputs.merged }}
+        run: |
+          # Unless the PR was auto-merged, make the manual review-and-merge step impossible to miss
+          if [ "$MERGED" = "true" ]; then
+            pr_banner="PR auto-merged: $PR_URL"
+          else
+            pr_banner="# 👉 [ACTION REQUIRED: REVIEW AND MERGE THE PR MANUALLY]($PR_URL)
+
+          **Auto-merge did not happen. Click the link above, review the changes, and merge the PR yourself:** $PR_URL"
+          fi
+          [ -s "$RUNNER_TEMP/done-summary.md" ] || echo "_Summary unavailable; see the PR for details._" > "$RUNNER_TEMP/done-summary.md"
+          issue-say --body-file - <<EOF
+          ## Summary of work completed
+
+          $pr_banner
+
+          $(cat "$RUNNER_TEMP/done-summary.md")
+
+          ### Review rounds
+
+          $(for f in "$RUNNER_TEMP"/review-*.md; do
+            [ -f "$f" ] || continue
+            if review-clean "$f"; then echo "- $(basename "$f" .md): no issues"; elif grep -q "Final review failed" "$f"; then echo "- $(basename "$f" .md): review failed"; else echo "- $(basename "$f" .md): $(grep -cE '^\s*([-*]|[0-9]+\.)' "$f") finding(s)"; fi
+          done)
+
+          ### Tests
+
+          ${{ steps.tests.outputs.status || 'not run' }}
+          EOF
+
+      - name: Report failure
+        if: failure()
+        run: |
+          # Inline (not issue-say): the wrapper may not be installed if an early step failed
+          printf 'The automated workflow failed. See the [workflow run](%s).\n\n%s\n' \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" "$MARKER" \
+            | gh issue comment "$ISSUE_NUMBER" --body-file -
