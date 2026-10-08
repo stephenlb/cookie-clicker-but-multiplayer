@@ -122,8 +122,22 @@ body {
     gap: 1rem;
 }
 
-#chat.chat {
+#chat {
     display: block;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+    box-sizing: border-box;
+}
+#chat .chat {
+    background: rgba(255, 255, 255, 0.75);
+    border-radius: 0.5rem;
+    margin-bottom: 0.4rem;
+    padding: 0.4rem 0.6rem;
+    overflow-wrap: anywhere;
+}
+#chat .chat-user {
+    color: #7a3e00;
 }
 
 html, body {

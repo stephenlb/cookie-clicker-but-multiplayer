@@ -100,20 +100,33 @@
         messages: chatReceiver,
     });
 
-    function safe(text) {
-        return text.replace(/[()<>""'']/g);
-    }
-
-    let chatDisplay = document.getElementById("chat");
+    const MAX_CHAT_MESSAGES = 50;
+    const chatDisplay = document.getElementById("chat");
     function chatReceiver(data) {
-        console.log(data);
-        let user = safe(data.user);
-        let message = safe(data.message);
-        chatDisplay.innerHTML = `<div class=chat>${user}: ${message}</div>` + chatDisplay.innerHTML;
-        addCookies(cookies=10);
-        let color = data.message.match(/[a-fA-F0-9]{6}/)[0];
-        if (color) {
-            document.body.style.backgroundColor = `#${color}`;
+        if (!data || typeof data.message !== "string") return;
+        const user = String(data.user || "anonymous");
+        const message = data.message;
+
+        // textContent keeps user input from being interpreted as HTML
+        const line = document.createElement("div");
+        line.className = "chat";
+        const name = document.createElement("strong");
+        name.className = "chat-user";
+        name.textContent = user;
+        const text = document.createElement("span");
+        text.textContent = `: ${message}`;
+        line.append(name, text);
+
+        // Newest message on top, capped so the page does not grow forever
+        chatDisplay.prepend(line);
+        while (chatDisplay.children.length > MAX_CHAT_MESSAGES) {
+            chatDisplay.lastElementChild.remove();
+        }
+
+        addCookies(10);
+        const match = message.match(/[a-fA-F0-9]{6}/);
+        if (match) {
+            document.body.style.backgroundColor = `#${match[0]}`;
         }
     }
 
