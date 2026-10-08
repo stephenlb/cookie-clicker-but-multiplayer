@@ -177,5 +177,22 @@
 
 
 
-    cookie.addEventListener('mousedown', click);
+    function animateClick(event) {
+        cookie.classList.remove('pressed');
+        void cookie.offsetWidth; // restart animation
+        cookie.classList.add('pressed');
+
+        const pop = document.createElement('div');
+        pop.className = 'click-pop';
+        pop.style.left = `${event.clientX}px`;
+        pop.style.top = `${event.clientY}px`;
+        pop.style.setProperty('--r', `${Math.random() * 80 - 40}deg`);
+        document.body.appendChild(pop);
+        pop.addEventListener('animationend', () => pop.remove());
+    }
+
+    document.body.addEventListener('mousedown', event => {
+        animateClick(event);
+        click(event);
+    });
 })();
