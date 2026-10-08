@@ -9,62 +9,68 @@ Made using **PubNub**
 # TODO List
 
 ## Done
-- [x] Cookies per second (@theavebel)
-- [x] localStorage for hashes
-- [x] Fix main UI thread freezing issue
+- [x] Cookies Per Second @theavebel
+- [x] localStorage for Hashes
+- [x] fix main UI Thread freezjng issue
+- [x] add Twitch and Youtube Chat to change BG on valid HEX code
+- [x] live chat
 
 ## Gameplay
-- [ ] Golden cookies!!!!!
-- [ ] Cookie bosses (@aasky_)
-- [ ] Cookie taxes (@OmG-bt9rm)
-- [ ] Tax evasion (@Torva.Messor)
-- [ ] Auto-clicker (PRO_Stumblr)
-- [ ] Tools: auto-generate cookie
-- [ ] Different types of cookies and upgrades
-- [ ] Upgrade where the chocolate chips are DOUBLE and give 2x the clicky
-- [ ] Guy named Kevin who gives you a task every hour
-- [ ] Versus game mode
-- [ ] Array of rates of cookie production
-- [ ] Total cookie velocity
-- [ ] Game state with current cookie balance
+- [ ] Glass of water
+- [ ] Cookie attack
+- [ ] GOLDEN COOKIES!!!!!
+- [ ] Cookie BOSSES @aasky_
+- [ ] Cookie Taxes - @OmG-bt9rm
+- [ ] Tax evasion - @Torva.Messor
+- [ ] auto-clicker PRO_Stumblr
+- [ ] tools: auto-generate cookie
+- [ ] different types of cookies
+- [ ] different types of cookies and upgrades
+- [ ] add an upgrade where the chocolate chips are DOUBLE and it gives 2x the clicky
+- [ ] guy named kevin who gives you task every hour
+- [ ] versus game mode
+- [ ] array of rates of cookie production []
+- [ ] tototalCookieVelocity
+- [ ] game state with currnet cookie balance
 
 ## Shop & Stuff
-- [ ] Shop to buy things (left menu panel)
-- [ ] Shop for upgrades (@fishflopper99)
-- [ ] Achievements (PRO_Stumblr)
-- [ ] Achievements at top left of screen
-- [ ] Use different cookie skins for milestones
-- [ ] Global events on cookie milestones
-- [ ] Hidden easter eggs (secrets)
+- [ ] SHOP to buy things left menu panel
+- [ ] shop for upgrades @fishflopper99
+- [ ] achievements PRO_Stumblr
+- [ ] acheivements top left of screen
+- [ ] use different cookie skins for milestones
+- [ ] global events on cookie milestones
+- [ ] hidden easter egg (secrets)
 
 ## Multiplayer
-- [ ] Leaderboard (PRO_Stumblr)
-- [ ] Leaderboard
-- [ ] Live chat
-- [ ] Twitch and YouTube chat changes BG on valid HEX code
-- [ ] Names of people who clicked the cookie
-- [ ] Multiplayer with PubNub
-- [ ] Rate limit / hash caching to prevent cheating
+- [ ] leaderboard PRO_Stumblr
+- [ ] leaderboard
+- [ ] names of people who clicked cookie
+- [ ] multiplayer with pubnub
+- [ ] RATE LIMIT hash caching to prevent cheating
 
 ## Visual Effects
-- [ ] Spin cookie while idle
-- [ ] Rotate cookie on click
-- [ ] Click anywhere to cookie
-- [ ] Cookie crumb drops on cookie click (Mikebloger)
-- [ ] Particles on cookie click
-- [ ] Confetti
-- [ ] Cookie balance animates
-- [ ] Sound on click (crunch of the cookie)
-- [ ] Music
+- [ ] spin cookie while idle
+- [ ] rotate cookie on click
+- [ ] click anywhere to cookie
+- [ ] add cookie crumb drops on cookie click Mikebloger
+- [ ] particles on cookie click
+- [ ] coffettii
+- [ ] cookie balance animates
+- [ ] Sound on click Crunch of the cookie
+- [ ] music
+- [ ] add sunglasses to cookie
+- [ ] cookie bites taken as you play
 
 ## UI
-- [ ] Build UI
-- [ ] Cookie image style chooser
-- [ ] Cookie image
-- [ ] Pixelate the font
-- [ ] Custom user font
-- [ ] Dark mode
+- [ ] build UI, cookie
+- [ ] cookie image style chooser
+- [ ] cookie image
+- [ ] Pixelate the FONT
+- [ ] custom user font
+- [ ] dark mod3
+- [ ] when you click on the cookie it changes color
 
 ## Code
-- [ ] Organize code (i'd consider this done now lol)
-- [ ] Inspiration: https://popcat.click/
+- [ ] organize code
+- [ ] https://popcat.click/ inspiration

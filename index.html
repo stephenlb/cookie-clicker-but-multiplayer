@@ -1,18 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Cookie Clicker but Multiplayer</title>
-    <link rel="stylesheet" href="styling/styling.css">
-</head>
-<body>
-    <h1>Cookie Clicker but Multiplayer</h1>
-    <h1>🍪 <span id="cookies">0</span></h1>
-    <h2>🍪 <span id="cookiesPerSecond">0</span></h2>
-    <button id="cookie"><img src="assets/cookieart.png" alt="Cookie"></button>
+<link rel=stylesheet href=styling/styling.css>
 
-    <script src="multiplayer/pubnub.js"></script>
-    <script src="logic/logic.js"></script>
-</body>
-</html>
+<title>Cookie Clicker but Multiplayer</title>
+<div id=layout>
+    <div id=chat>
+        <!-- Chat appears here -->
+    </div>
+    <div id=game class=grid-element>
+        <div>
+            <h1>Cookie Clicker but Multiplayer</h1>
+            <h1>🍪 <span id=cookies>0</span></h1>
+            <h2>🍪 <span id=cookiesPerSecond>0</span></h2>
+            <button id=cookie><img src="assets/cookieart.png"></button>
+        </div>
+    </div>
+</div>
+
+<script src=multiplayer/pubnub.js></script>
+<script src=logic/logic.js></script>

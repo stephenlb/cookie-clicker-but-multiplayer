@@ -1,6 +1,7 @@
 (async () =>  {
     let cookiesPerSecond = 0;
     let cookieBalance = getCookies();
+    const chat_channel = localStorage.getItem("chat_channel");
     const hashCache = JSON.parse(localStorage.getItem("hashCache")||"{}");
     const cookieBalanceDisplay = document.querySelector('#cookies');
     const cookiePerSecondBalanceDisplay = document.querySelector('#cookiesPerSecond');
@@ -91,7 +92,30 @@
     let pubnub = PubNub({
         subscribeKey: 'demo',
         publishKey: 'demo',
+        timetoken: 100,
     });
+
+    pubnub.subscribe({
+        channel: chat_channel,
+        messages: chatReceiver,
+    });
+
+    function safe(text) {
+        return text.replace(/[()<>""'']/g);
+    }
+
+    let chatDisplay = document.getElementById("chat");
+    function chatReceiver(data) {
+        console.log(data);
+        let user = safe(data.user);
+        let message = safe(data.message);
+        chatDisplay.innerHTML = `<div class=chat>${user}: ${message}</div>` + chatDisplay.innerHTML;
+        addCookies(cookies=10);
+        let color = data.message.match(/[a-fA-F0-9]{6}/)[0];
+        if (color) {
+            document.body.style.backgroundColor = `#${color}`;
+        }
+    }
 
     function addCookies(cookies=1) {
         cookies *= 1 + Math.round(cookieBalance / 1000000);
@@ -118,7 +142,7 @@
     }
     async function cookieClickReceiver(hash) {
         let verified = await verify(hash);
-        console.log(`Cookie Click Verified: ${verified}`);
+        //console.log(`Cookie Click Verified: ${verified}`);
         addCookies(1);
     }
 
@@ -130,12 +154,9 @@
     let cookie = document.getElementById("cookie");
     setInterval( click, 1000);
     async function click(event) {
-        console.log('clicked');
-        let start = +new Date;
+        //console.log('clicked');
         await nonceFinder(DIFFICULTY, hash => {
-            let end = +new Date;
-            console.log(hash);
-            console.log("Latency: ", end - start);
+            //console.log(hash);
             cookieClickTransmit(hash);
         });
     }
