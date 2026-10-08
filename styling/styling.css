@@ -113,7 +113,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 1rem;
-    grid-template-columns: 1fr 3fr; 
+    grid-template-columns: 1fr 3fr 1fr;
 }
 .grid-element {
     display: grid;
@@ -171,19 +171,240 @@ html, body {
 .bg-cookie:nth-child(7) { --s: 75px; --x: 0.32; --y: 0.13; }
 .bg-cookie:nth-child(8) { --s: 70px; --x: 0.72; --y: 0.94; }
 
-#license {
+.golden-cookie {
     position: fixed;
-    bottom: 4px;
-    left: 0;
-    right: 0;
-    text-align: center;
-    font-size: 12px;
-    color: #fff;
-    text-shadow: 0 0 3px #000;
-    z-index: 10;
+    width: 80px;
+    height: 80px;
+    padding: 0;
+    border: 0;
+    background: url(../assets/cookie.png) center / contain no-repeat;
+    filter: sepia(1) saturate(6) hue-rotate(-5deg) brightness(1.3) drop-shadow(0 0 12px gold);
+    cursor: pointer;
+    z-index: 20;
+    animation: golden-pulse 0.8s ease-in-out infinite alternate, golden-fade 0.4s ease-out;
+}
+
+.golden-cookie.leaving {
+    transition: opacity 0.4s, transform 0.4s;
+    opacity: 0;
+    transform: scale(0.2);
+}
+
+.golden-bonus {
+    position: fixed;
+    color: gold;
+    font-size: 32px;
+    font-weight: bold;
+    text-shadow: 0 0 4px #000;
+    pointer-events: none;
+    z-index: 21;
+    animation: golden-rise 1.2s ease-out forwards;
+}
+
+@keyframes golden-pulse { from { scale: 0.9; } to { scale: 1.1; } }
+@keyframes golden-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes golden-rise { to { transform: translateY(-80px); opacity: 0; } }
+
+.attack-cookie {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    padding: 0;
+    border: 0;
+    background: url(../assets/cookie.png) center / contain no-repeat;
+    filter: grayscale(1) brightness(0.45) sepia(1) saturate(8) hue-rotate(-50deg) drop-shadow(0 0 10px red);
+    cursor: crosshair;
+    z-index: 20;
+    transition: left var(--t) linear, top var(--t) linear;
+    animation: attack-spin 0.6s linear infinite;
+}
+
+.attack-bonus {
+    position: fixed;
+    color: #f33;
+    font-size: 32px;
+    font-weight: bold;
+    text-shadow: 0 0 4px #000;
+    pointer-events: none;
+    z-index: 21;
+    animation: golden-rise 1.2s ease-out forwards;
+}
+
+@keyframes attack-spin { to { rotate: 360deg; } }
+
+.boss-cookie {
+    position: fixed;
+    width: 180px;
+    height: 180px;
+    padding: 0;
+    border: 0;
+    background: url(../assets/cookie.png) center / contain no-repeat;
+    filter: hue-rotate(250deg) saturate(2) brightness(0.7) drop-shadow(0 0 20px purple);
+    cursor: crosshair;
+    z-index: 20;
+    animation: boss-wobble 0.5s ease-in-out infinite alternate;
+}
+
+.boss-cookie.hit {
+    filter: hue-rotate(250deg) saturate(2) brightness(2) drop-shadow(0 0 20px red);
+}
+
+.boss-bar {
+    position: fixed;
+    width: 180px;
+    height: 14px;
+    border: 2px solid #000;
+    background: #400;
+    z-index: 21;
     pointer-events: none;
 }
 
-#license a {
-    pointer-events: auto;
+.boss-bar > div {
+    height: 100%;
+    width: 100%;
+    background: #e22;
 }
+
+.boss-bar::after {
+    content: attr(data-label);
+    position: absolute;
+    top: -22px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #fff;
+    font-weight: bold;
+    text-shadow: 0 0 4px #000;
+}
+
+@keyframes boss-wobble { from { rotate: -6deg; } to { rotate: 6deg; } }
+
+#shop {
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 0.5rem;
+    box-sizing: border-box;
+}
+#shop h2 {
+    background-color: rgba(255,255,255,0.8);
+    color: #7b3f00;
+    margin: 0 0 0.5rem;
+}
+.upgrade {
+    display: block;
+    width: 100%;
+    margin-bottom: 0.4rem;
+    padding: 0.5rem 0.6rem;
+    text-align: left;
+    font: inherit;
+    color: #7a3e00;
+    background: rgba(255, 255, 255, 0.85);
+    border: 0;
+    border-radius: 0.5rem;
+    cursor: pointer;
+}
+.upgrade:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.upgrade:not(:disabled):hover {
+    background: #fff3c4;
+}
+.upgrade .upgrade-desc {
+    display: block;
+    font-size: 0.8em;
+}
+
+/* Rotating starburst glow behind the big cookie and golden cookies */
+button#cookie::before,
+.golden-cookie::before {
+    content: "";
+    position: absolute;
+    inset: -45%;
+    z-index: -1;
+    pointer-events: none;
+    background: repeating-conic-gradient(rgba(255, 230, 120, 0.75) 0deg 10deg, transparent 10deg 30deg);
+    -webkit-mask: radial-gradient(circle, #000 25%, transparent 70%);
+    mask: radial-gradient(circle, #000 25%, transparent 70%);
+    animation: glow-spin 12s linear infinite;
+}
+.golden-cookie::before {
+    inset: -70%;
+    animation-duration: 6s;
+}
+@keyframes glow-spin { to { transform: rotate(360deg); } }
+
+#cookie-speech {
+    position: fixed;
+    width: 30vw;
+    min-width: 220px;
+    max-width: 420px;
+    padding: 0.6rem 0.8rem;
+    box-sizing: border-box;
+    transform: translateX(-50%);
+    text-align: left;
+    color: #5a2d00;
+    background: #fffbe8;
+    border: 3px solid #7b3f00;
+    border-radius: 1rem;
+    pointer-events: none;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.4s;
+}
+#cookie-speech.visible { opacity: 1; }
+#cookie-speech::before {
+    content: "";
+    position: absolute;
+    top: -14px;
+    left: calc(50% - 10px);
+    border: 10px solid transparent;
+    border-top: 0;
+    border-bottom: 12px solid #7b3f00;
+}
+#cookie-speech strong { display: block; margin-bottom: 0.2rem; }
+
+.water-glass {
+    position: fixed;
+    width: 44px;
+    height: 64px;
+    padding: 0;
+    border: 0;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.55) 0 18%, rgba(70, 160, 255, 0.85) 18% 100%);
+    clip-path: polygon(0 0, 100% 0, 84% 100%, 16% 100%);
+    cursor: pointer;
+    z-index: 20;
+    filter: drop-shadow(0 0 6px #9cf);
+    animation: golden-fade 0.4s ease-out;
+}
+
+#buff { color: #1a6fd1; min-height: 1.2em; }
+
+.boss-cookie.irs {
+    filter: grayscale(1) brightness(0.8) contrast(1.4) drop-shadow(0 0 20px #3a6ea5);
+}
+.boss-cookie.irs.hit {
+    filter: grayscale(1) brightness(2) drop-shadow(0 0 20px #fff);
+}
+
+#hack-panel {
+    position: fixed;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    display: none;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    max-width: 90vw;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: 0.5rem;
+    z-index: 100;
+    font-size: 14px;
+}
+#hack-panel.open { display: flex; }
+#hack-panel button, #hack-panel input {
+    font: inherit;
+    padding: 0.2rem 0.5rem;
+}
+#hack-panel .hack-title { width: 100%; color: #0f0; text-align: left; }

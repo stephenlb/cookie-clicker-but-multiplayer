@@ -11,12 +11,20 @@
             <h1>Cookie Clicker but Multiplayer</h1>
             <h1>🍪 <span id=cookies>0</span></h1>
             <h2>🍪 <span id=cookiesPerSecond>0</span></h2>
+            <h3 id=taxTimer></h3>
+            <h3 id=buff></h3>
             <button id=cookie><img src="assets/cookieart.png"></button>
         </div>
     </div>
+    <div id=shop>
+        <h2>Shop</h2>
+        <div id=upgrades><!-- Upgrades appear here --></div>
+    </div>
 </div>
-<footer id=license>Licensed under the <a href="LICENSE" target=_blank rel=noopener>Apache License 2.0</a></footer>
 
+<div id=cookie-speech></div>
+
+<script src=js/break_infinity.min.js></script>
 <script src=js/pubnub.js></script>
 <script src=js/hashcache.js></script>
 <script src=js/game.js></script>

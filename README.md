@@ -21,7 +21,7 @@ Made using **PubNub**
 ## Gameplay
 - [ ] Glass of water
 - [ ] Cookie attack
-- [ ] GOLDEN COOKIES!!!!!
+- [x] GOLDEN COOKIES!!!!!
 - [ ] Cookie BOSSES @aasky_
 - [ ] Cookie Taxes - @OmG-bt9rm
 - [ ] Tax evasion - @Torva.Messor
