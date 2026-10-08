@@ -151,4 +151,9 @@ html, body {
     text-align: center;
     font-size: 12px;
     z-index: 10;
+    pointer-events: none;
+}
+
+#license a {
+    pointer-events: auto;
 }
