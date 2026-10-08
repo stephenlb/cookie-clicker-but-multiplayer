@@ -6,15 +6,25 @@
     font-style: normal;
     font-display: swap;
 }
+html {
+    /* PRO_Stumblr thank you! */
+    /*background: url(table-cloth.jpg);*/
+    /* background: url(assets/cookie.png); <- put this into the body*/ /* OmG-bt9rm thank you! */
+    text-align: center;
+    /* ElLeonelGD thank you! */
+    background-color: lightblue;
+    font-family: 'pixel', 'Helvetica Neue';
+    /*font-weight: 200;*/
+}
 #cookies {
-    color: #236890;
+    color: #6b2f00;
     transition: all 0.3s ease;
     position: relative;
     display: inline-block;
 }
 h1 {
     background-color: rgba(255,255,255,0.8);
-    color: #F0DFFC;
+    color: #7b3f00;
     font-size: 50px;
 }
 button#cookie {
@@ -64,16 +74,6 @@ button#cookie {
     animation: resize 30s infinite linear;
 }
   
-html {
-    /* PRO_Stumblr thank you! */
-    /*background: url(table-cloth.jpg);*/
-    /* background: url(assets/cookie.png); <- put this into the body*/ /* OmG-bt9rm thank you! */
-    background-color: lightblue;
-    text-align: center;
-    /* ElLeonelGD thank you! */
-    font-family: 'pixel', 'Helvetica Nueu';
-    /*font-weight: 200;*/
-}
 
 body {
     margin: 0;
@@ -97,19 +97,20 @@ body {
         75px 75px,
         70px 70px;
     background-position: 
-        8% 12%,
-        92% 18%,
-        86% 82%,
-        12% 88%,
-        5% 52%,
-        95% 55%,
-        30% 10%,
-        70% 90%;
+        12% 15%,
+        95% 21%,
+        89% 85%,
+        14% 91%,
+        7% 55%,
+        98% 59%,
+        32% 13%,
+        72% 94%;
     background-repeat: no-repeat;
 }
 /* * { margin: 0; padding: 0; box-sizing: border-box; } body { min-height: 100vh; background: linear-gradient(90deg, #ADD8E6 16px, #DDA0DD 16px, #DDA0DD 32px), linear-gradient(#ADD8E6 16px, #DDA0DD 16px, #DDA0DD 32px); background-size: 32px 32px; background-position: 0 0; image-rendering: pixelated; image-rendering: crisp-edges; }*/
 </style>
 
+<!-- TODO Glass of water -->
 <!-- TODO GOLDEN COOKIES!!!!! -->
 <!-- TODO add Twitch and Youtube Chat to change BG on valide HEX CODe -->
 <!-- TODO spin cookie while idle -->
@@ -118,7 +119,7 @@ body {
 <!-- TODO global events on cookie milestones -->
 <!-- TODO live chat -->
 <!-- TODO add an upgrade where the chocolate chips are DOUBLE and it gives 2x the clicky -->
-<!-- TODO  -->
+<!-- TODO  different types of cookies -->
 <!-- TODO  Cookie BOSSES  @aasky_-->
 <!-- TODO  -->
 <!-- TODO Cookie Taxes - @OmG-bt9rm -->
@@ -142,6 +143,9 @@ body {
 <!-- TODO shop for upgrades @fishflopper99 -->
 <!-- TODO leaderboard -->
 <!-- TODO dark mod3 -->
+<!-- TODO add sunglasses to cookie -->
+<!-- TODO  -->
+<!-- TODO  -->
 <!-- TODO  -->
 <!-- TODO  -->
 <!-- TODO particles on cookie click -->
@@ -157,16 +161,22 @@ body {
 <!-- ✅ TODO fix main UI Thread freezjng issue -->
 <!-- TODO organize code -->
 <title>Cookie Clicker but Multiplayer</title>
-<h1>Cookie Clicker but Multiplayer</h1>
-<h1>🍪 <span id=cookies>0</span></h1>
-<h2>🍪 <span id=cookiesPerSecond>0</span></h2>
-<button id=cookie><img src="assets/cookieart.png"></button>
+<div id=chat>
+    
+</div>
+<div id=game>
+    <h1>Cookie Clicker but Multiplayer</h1>
+    <h1>🍪 <span id=cookies>0</span></h1>
+    <h2>🍪 <span id=cookiesPerSecond>0</span></h2>
+    <button id=cookie><img src="assets/cookieart.png"></button>
+</div>
 <script src=multiplayer/pubnub.js></script>
 <!-- <script src=hash.js></script>
 <script src=app.js></script> -->
 <script>(async () =>  {
     let cookiesPerSecond = 0;
     let cookieBalance = getCookies();
+    const chat_channel = localStorage.getItem("chat_channel");
     const hashCache = JSON.parse(localStorage.getItem("hashCache")||"{}");
     const cookieBalanceDisplay = document.querySelector('#cookies');
     const cookiePerSecondBalanceDisplay = document.querySelector('#cookiesPerSecond');
@@ -259,6 +269,24 @@ body {
         publishKey: 'demo',
     });
 
+    pubnub.subscribe({
+        channel: chat_channel,
+        messages: chatReceiver,
+    });
+
+    function safe(text) {
+        return text.replace(/[()<>""'']/g);
+    }
+
+    function chatReceiver(data) {
+        console.log(data);
+        addCookies(cookies=10);
+        let color = data.message.match(/[a-fA-F0-9]{6}/)[0];
+        if (color) {
+            document.body.style.backgroundColor = `#${color}`;
+        }
+    }
+
     function addCookies(cookies=1) {
         cookies *= 1 + Math.round(cookieBalance / 1000000);
         cookieBalance += cookies;
@@ -284,7 +312,7 @@ body {
     }
     async function cookieClickReceiver(hash) {
         let verified = await verify(hash);
-        console.log(`Cookie Click Verified: ${verified}`);
+        //console.log(`Cookie Click Verified: ${verified}`);
         addCookies(1);
     }
 
@@ -296,12 +324,9 @@ body {
     let cookie = document.getElementById("cookie");
     setInterval( click, 1000);
     async function click(event) {
-        console.log('clicked');
-        let start = +new Date;
+        //console.log('clicked');
         await nonceFinder(DIFFICULTY, hash => {
-            let end = +new Date;
-            console.log(hash);
-            console.log("Latency: ", end - start);
+            //console.log(hash);
             cookieClickTransmit(hash);
         });
     }
@@ -315,8 +340,11 @@ body {
 <!-- Cookie Clicker but Multiplayer -->
 <!-- Cookie Clicker but Multiplayer -->
 <!-- Cookie Clicker but Multiplayer -->
+<!-- Cookie Clicker but Multiplayer -->
+<!-- Cookie Clicker but Multiplayer -->
 
 <!-- TODO: cookie image style chooser  -->
+<!-- TODO: when you click on the cookie it changes color   -->
 <!-- TODO: cookie image   -->
 <!-- TODO: build UI, cookie   ->
 <!-- TODO: game state with currnet cookie balance  ->
