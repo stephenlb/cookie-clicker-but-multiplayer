@@ -11,8 +11,6 @@ html {
     /* background: url(assets/cookie.png); <- put this into the body*/ /* OmG-bt9rm thank you! */
     text-align: center;
     /* ElLeonelGD thank you! */
-    background-color: lightblue;
-    background-color: #A7775B; /* @YukiMasterGD */
     font-family: 'pixel', 'Helvetica Neue';
     /*font-weight: 200;*/
 }
@@ -73,39 +71,12 @@ button#cookie:active, button#cookie:focus{
 button#cookie {
     animation: resize 30s infinite linear;
 }
-  
 
 body {
     margin: 0;
     min-height: 100vh;
-    background-image: 
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png"),
-        url("../assets/cookie.png");
-    background-size: 
-        160px 160px,
-        140px 140px,
-        130px 130px,
-        110px 110px,
-        95px 95px,
-        90px 90px,
-        75px 75px,
-        70px 70px;
-    background-position: 
-        12% 15%,
-        95% 21%,
-        89% 85%,
-        14% 91%,
-        7% 55%,
-        98% 59%,
-        32% 13%,
-        72% 94%;
-    background-repeat: no-repeat;
+    background-color: lightblue;
+    background-color: #A7775B; /* @YukiMasterGD */
 }
 /* * { margin: 0; padding: 0; box-sizing: border-box; } body { min-height: 100vh; background: linear-gradient(90deg, #ADD8E6 16px, #DDA0DD 16px, #DDA0DD 32px), linear-gradient(#ADD8E6 16px, #DDA0DD 16px, #DDA0DD 32px); background-size: 32px 32px; background-position: 0 0; image-rendering: pixelated; image-rendering: crisp-edges; }*/
 
@@ -146,3 +117,28 @@ html, body {
     overscroll-behavior: none;
     touch-action: none;
 }
+
+@keyframes bg-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.bg-cookie {
+    position: fixed;
+    z-index: -1;
+    pointer-events: none;
+    background: url("../assets/cookie.png") no-repeat center / contain;
+    width: var(--s);
+    height: var(--s);
+    left: calc((100vw - var(--s)) * var(--x));
+    top: calc((100vh - var(--s)) * var(--y));
+    animation: bg-spin 60s infinite linear;
+}
+.bg-cookie:nth-child(1) { --s: 160px; --x: 0.12; --y: 0.15; }
+.bg-cookie:nth-child(2) { --s: 140px; --x: 0.95; --y: 0.21; }
+.bg-cookie:nth-child(3) { --s: 130px; --x: 0.89; --y: 0.85; }
+.bg-cookie:nth-child(4) { --s: 110px; --x: 0.14; --y: 0.91; }
+.bg-cookie:nth-child(5) { --s: 95px; --x: 0.07; --y: 0.55; }
+.bg-cookie:nth-child(6) { --s: 90px; --x: 0.98; --y: 0.59; }
+.bg-cookie:nth-child(7) { --s: 75px; --x: 0.32; --y: 0.13; }
+.bg-cookie:nth-child(8) { --s: 70px; --x: 0.72; --y: 0.94; }

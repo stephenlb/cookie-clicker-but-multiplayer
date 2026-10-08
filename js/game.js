@@ -2,7 +2,6 @@
     let cookiesPerSecond = 0;
     let cookieBalance = getCookies();
     const chat_channel = localStorage.getItem("chat_channel");
-    const hashCache = JSON.parse(localStorage.getItem("hashCache")||"{}");
     const cookieBalanceDisplay = document.querySelector('#cookies');
     const cookiePerSecondBalanceDisplay = document.querySelector('#cookiesPerSecond');
     const DIFFICULTY = 4;
