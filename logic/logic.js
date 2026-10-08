@@ -104,7 +104,9 @@
     const chatDisplay = document.getElementById("chat");
     function chatReceiver(data) {
         if (!data || typeof data.message !== "string") return;
-        const user = String(data.user || "anonymous");
+        // Drop Twitch system notices and anonymous senders
+        const user = String(data.user || "").trim();
+        if (!user || user.toLowerCase() === "tmi.twitch.tv") return;
         const message = data.message;
 
         // textContent keeps user input from being interpreted as HTML
