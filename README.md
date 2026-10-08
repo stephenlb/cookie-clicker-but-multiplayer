@@ -1,4 +1,7 @@
 # Cookie Clicker But Multiplayer
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+
 Get the experience of clicking a cookie with other humans (hopefully)! 
 
 *"How many cookies?"
@@ -74,3 +77,7 @@ Made using **PubNub**
 ## Code
 - [ ] organize code
 - [ ] https://popcat.click/ inspiration
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE).
