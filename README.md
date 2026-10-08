@@ -24,17 +24,17 @@ Made using **PubNub**
 - [x] GOLDEN COOKIES!!!!!
 - [x] Cookie BOSSES @aasky_
 - [x] Cookie Taxes - @OmG-bt9rm
-- [ ] Tax evasion - @Torva.Messor
-- [ ] auto-clicker PRO_Stumblr
-- [ ] tools: auto-generate cookie
-- [ ] different types of cookies
-- [ ] different types of cookies and upgrades
-- [ ] add an upgrade where the chocolate chips are DOUBLE and it gives 2x the clicky
+- [x] Tax evasion - @Torva.Messor
+- [x] auto-clicker PRO_Stumblr
+- [x] tools: auto-generate cookie
+- [x] different types of cookies
+- [x] different types of cookies and upgrades
+- [x] add an upgrade where the chocolate chips are DOUBLE and it gives 2x the clicky
 - [x] guy named kevin who gives you task every few minutes
 - [x] versus game mode (chat: !red !blue !versus)
-- [ ] array of rates of cookie production []
-- [ ] tototalCookieVelocity
-- [ ] game state with currnet cookie balance
+- [x] array of rates of cookie production []
+- [x] tototalCookieVelocity
+- [x] game state with currnet cookie balance
 
 ## Shop & Stuff
 - [ ] SHOP to buy things left menu panel

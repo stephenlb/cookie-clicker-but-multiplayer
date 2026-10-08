@@ -39,6 +39,8 @@
         { id: 'loophole', name: 'Tax Loophole',  desc: '-0.5% cookie tax rate',      cost: 1000, growth: 2, max: 5 },
         { id: 'evasion', name: 'Tax Evasion',   desc: '+15% chance to dodge each tax', cost: 2500, growth: 3, max: 5 },
         { id: 'fast',    name: 'Fast Clicker',   desc: 'auto-clicks 2 times/sec',    cost: 400 },
+        { id: 'planet',  name: 'Cookie Planet',  desc: 'bakes 2,000,000 cookies/sec',     cost: 1e9 },
+        { id: 'dimension', name: 'Cookie Dimension', desc: 'bakes 2,000,000,000 cookies/sec', cost: 1e12 },
     ];
     const owned = JSON.parse(localStorage.getItem("upgrades") || "{}");
     const level = id => owned[id] || 0;
@@ -49,7 +51,8 @@
     const chatMessageValue = () => 10 + 10 * level('message');
     const chatWordValue = () => 5 * level('chat');
     const chatCharValue = () => level('char');
-    const bakedPerSecond = () => level('grandma') + 8 * level('oven') + 50 * level('factory');
+    const bakedPerSecond = () => level('grandma') + 8 * level('oven') + 50 * level('factory')
+        + 2e6 * level('planet') + 2e9 * level('dimension');
 
     const shopList = document.getElementById('upgrades');
     const shopButtons = {};
@@ -187,6 +190,9 @@
 
     const MAX_CHAT_MESSAGES = 50;
     const chatDisplay = document.getElementById("chat");
+    function safe(text) {
+        return text.replace(/['"()<>]/g,'');
+    }
     function chatReceiver(data) {
         if (!data || typeof data.message !== "string") return;
         // Drop Twitch system notices and anonymous senders
@@ -197,11 +203,13 @@
         // textContent keeps user input from being interpreted as HTML
         const line = document.createElement("div");
         line.className = "chat";
+        const team = versusChat(user, message);
+        if (team) line.classList.add(`team-${team}`);
         const name = document.createElement("strong");
         name.className = "chat-user";
-        name.textContent = user;
+        name.textContent = safe(user);
         const text = document.createElement("span");
-        text.textContent = `: ${message}`;
+        text.textContent = safe(`: ${message}`);
         line.append(name, text);
 
         // Newest message on top, capped so the page does not grow forever
@@ -214,7 +222,6 @@
         const wordCount = message.split(/\s+/).filter(Boolean).length;
         addCookies(chatMessageValue() + chatWordValue() * wordCount + chatCharValue() * message.length);
         chatSpawnTriggers(message);
-        versusChat(user, message);
         hydrateAlert(message);
         const match = message.match(/[a-fA-F0-9]{6}/);
         if (match) {
@@ -242,9 +249,12 @@
 
     // Chat keywords spawn cookies, with a per-keyword cooldown so spam cannot flood the screen
     const CHAT_SPAWN_COOLDOWN_MS = 10000;
+    // "boom" in chat is worth this many clicks on whatever boss is on screen
+    const BOOM_DAMAGE = 500000;
     const chatSpawns = [
         { pattern: /\bhydrat(e|ed|ion)\b|[💧🚰🚿💦🌊🥛🧋🍼]/iu, spawn: () => spawnWaterGlass(), last: 0 },
         { pattern: /\bboss\b/i,             spawn: () => spawnBossCookie(), last: 0 },
+        { pattern: /\bboom\b/i,             spawn: () => damageFight?.(BOOM_DAMAGE), last: 0 },
         { pattern: /\bgolden\b/i,           spawn: () => spawnGoldenCookie(), last: 0 },
         { pattern: /\bdiamonds?\b|💎/iu,     spawn: () => spawnDiamondCookie(), last: 0 },
     ];
@@ -301,12 +311,13 @@
             const name = command[1].toLowerCase();
             if (name === 'versus') startVersus();
             else versusMembers.set(key, name);
-            return;
+            return versusMembers.get(key);
         }
         const team = versusMembers.get(key);
-        if (!versus || !team) return;
+        if (!versus || !team) return team;
         versus[team] += Math.min(5, 1 + message.split(/\s+/).filter(Boolean).length);
         renderVersus();
+        return team;
     }
 
     function addCookies(cookies=1) {
@@ -461,6 +472,7 @@
     // Used by boss cookies and the IRS. Only one fight at a time; returns false if busy.
     const FIGHT_SIZE = 180;
     let fightActive = false;
+    let damageFight = null; // deals damage to the current fight, if any
     function spawnFight({ label, className, maxHp, timeMs, onWin, onLose }) {
         if (fightActive) return false;
         fightActive = true;
@@ -483,6 +495,7 @@
 
         const finish = () => {
             fightActive = false;
+            damageFight = null;
             enemy.remove();
             bar.remove();
         };
@@ -492,16 +505,24 @@
             finish();
         }, timeMs);
 
-        enemy.addEventListener('mousedown', event => {
-            event.stopPropagation(); // not a regular cookie click
+        const hit = (event, damage) => {
             enemy.classList.add('hit');
             setTimeout(() => enemy.classList.remove('hit'), 80);
-            hp--;
+            hp -= damage;
             fill.style.width = `${Math.max(0, hp / maxHp * 100)}%`;
             if (hp > 0) return;
             clearTimeout(escape);
+            damageFight = null;
             onWin(event);
             finish();
+        };
+        damageFight = damage => {
+            const rect = enemy.getBoundingClientRect();
+            hit({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }, damage);
+        };
+        enemy.addEventListener('mousedown', event => {
+            event.stopPropagation(); // not a regular cookie click
+            hit(event, 1);
         });
         return true;
     }
@@ -692,6 +713,49 @@
         lastMilestone = Math.max(lastMilestone, reached);
     }, 500);
 
+    // Achievements: unlocked the first time the balance reaches a threshold, and kept even if it drops later
+    const ACHIEVEMENTS = [
+        { id: 'a100',  name: 'Crumbs',            at: 100 },
+        { id: 'a1k',   name: 'Cookie Jar',        at: 1e3 },
+        { id: 'a10k',  name: 'Bakery Intern',     at: 1e4 },
+        { id: 'a100k', name: 'Head Baker',        at: 1e5 },
+        { id: 'a1m',   name: 'Cookie Millionaire', at: 1e6 },
+        { id: 'a100m', name: 'Cookie Mogul',      at: 1e8 },
+        { id: 'a1b',   name: 'Cookie Billionaire', at: 1e9 },
+        { id: 'a1t',   name: 'Cookie Empire',     at: 1e12 },
+        { id: 'a1qa',  name: 'Cookie Galaxy',     at: 1e15 },
+        { id: 'a1qi',  name: 'Cookie Universe',   at: 1e18 },
+        { id: 'a1sx',  name: 'Cookie Multiverse', at: 1e21 },
+        { id: 'a1dc',  name: 'Cookie Singularity', at: 1e33 },
+    ];
+    const unlocked = JSON.parse(localStorage.getItem("achievements") || "{}");
+    const achievementList = document.getElementById('achievements');
+    const achievementEls = {};
+    for (const a of ACHIEVEMENTS) {
+        achievementEls[a.id] = achievementList.appendChild(document.createElement('div'));
+    }
+    function renderAchievements() {
+        for (const a of ACHIEVEMENTS) {
+            const el = achievementEls[a.id];
+            const done = unlocked[a.id];
+            el.className = done ? 'achievement unlocked' : 'achievement';
+            el.textContent = done ? `🏆 ${a.name} - ${fmt(a.at)} 🍪` : `🔒 Reach ${fmt(a.at)} 🍪`;
+        }
+    }
+    setInterval(() => {
+        let changed = false;
+        for (const a of ACHIEVEMENTS) {
+            if (unlocked[a.id] || cookieBalance.lt(a.at)) continue;
+            unlocked[a.id] = true;
+            changed = true;
+            sayInSpeech('🏆 Achievement unlocked', `${a.name}: reach ${fmt(a.at)} cookies`);
+        }
+        if (!changed) return;
+        localStorage.setItem("achievements", JSON.stringify(unlocked));
+        renderAchievements();
+    }, 500);
+    renderAchievements();
+
     // Synthesized crunch: a burst of filtered noise plus a short pitched thump, varied per click
     let audioCtx = null;
     let noiseBuffer = null;
@@ -730,6 +794,7 @@
         }
     }
 
+    const COOKIE_TYPES = ['cookie.png', 'cookie-2.png', 'cookie-3.webp', 'cookieart.png'];
     function animateClick(event) {
         playClickSound();
         cookie.classList.remove('pressed');
@@ -740,6 +805,8 @@
         pop.className = 'click-pop';
         pop.style.left = `${event.clientX}px`;
         pop.style.top = `${event.clientY}px`;
+        const type = COOKIE_TYPES[Math.floor(Math.random() * COOKIE_TYPES.length)];
+        pop.style.backgroundImage = `url(assets/${type})`;
         pop.style.setProperty('--r', `${Math.random() * 80 - 40}deg`);
         document.body.appendChild(pop);
         pop.addEventListener('animationend', () => pop.remove());

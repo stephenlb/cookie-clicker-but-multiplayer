@@ -57,24 +57,43 @@ button#cookie img {
 button#cookie:hover img {
     filter: drop-shadow(0 1.5vh 2vh rgba(90, 40, 0, 0.45)) brightness(1.08);
 }
+button#cookie:active img {
+    transform: scale(0.82);
+    filter: drop-shadow(0 0.5vh 0.8vh rgba(90, 40, 0, 0.5)) brightness(0.9);
+    animation: none;
+}
+button#cookie::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+}
+button#cookie.pressed::after {
+    animation: flash 0.4s ease-out;
+}
 button#cookie.pressed img {
-    animation: press 0.3s cubic-bezier(.2, 1.6, .4, 1);
+    animation: press 0.35s cubic-bezier(.2, 1.6, .4, 1);
 }
 @keyframes cookie-breathe {
     50% { transform: scale(1.04) translateY(-1%); }
 }
 @keyframes press {
     0% { transform: scale(1); filter: brightness(1); }
-    20% { transform: scale(0.78, 0.86) rotate(-5deg); filter: brightness(1.35); }
-    60% { transform: scale(1.1, 1.04) rotate(2deg); }
+    15% { transform: scale(0.7, 0.8) rotate(-8deg); filter: brightness(1.6) saturate(1.4); }
+    55% { transform: scale(1.18, 1.08) rotate(4deg); filter: brightness(1.25); }
     100% { transform: scale(1); filter: brightness(1); }
+}
+@keyframes flash {
+    0% { box-shadow: 0 0 0 0 rgba(255, 230, 120, 0.9), 0 0 40px 10px rgba(255, 210, 90, 0.9); background-color: rgba(255, 240, 160, 0.6); }
+    100% { box-shadow: 0 0 0 5vh rgba(255, 230, 120, 0), 0 0 0 0 rgba(255, 210, 90, 0); }
 }
 .click-ring {
     position: fixed;
     width: 30px;
     height: 30px;
     margin: -15px 0 0 -15px;
-    border: 4px solid rgba(255, 220, 120, 0.9);
+    border: 6px solid rgba(255, 220, 120, 0.95);
     border-radius: 50%;
     pointer-events: none;
     z-index: 999;
@@ -85,11 +104,10 @@ button#cookie.pressed img {
 }
 .click-crumb {
     position: fixed;
-    width: 8px;
-    height: 8px;
-    margin: -4px 0 0 -4px;
-    border-radius: 50%;
-    background: #7b3f00;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    background: url("../assets/cookie_crumb.png") no-repeat center / contain;
     pointer-events: none;
     z-index: 1000;
     animation: click-crumb 0.6s ease-out forwards;
@@ -388,6 +406,22 @@ html, body {
     display: block;
     font-size: 0.8em;
 }
+#shop h2:not(:first-child) {
+    margin-top: 1rem;
+}
+.achievement {
+    margin-bottom: 0.4rem;
+    padding: 0.4rem 0.6rem;
+    color: #7a3e00;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 0.5rem;
+    opacity: 0.6;
+}
+.achievement.unlocked {
+    background: #fff3c4;
+    opacity: 1;
+    font-weight: bold;
+}
 
 /* Rotating starburst glow behind the big cookie and golden cookies */
 button#cookie::before,
@@ -513,3 +547,7 @@ button#cookie::before,
     z-index: 1000;
 }
 #hydrate-alert.open { display: flex; }
+
+/* Versus team members get their team color on name and text */
+#chat .chat.team-red, #chat .chat.team-red .chat-user { color: #d62828; }
+#chat .chat.team-blue, #chat .chat.team-blue .chat-user { color: #1d4ed8; }
