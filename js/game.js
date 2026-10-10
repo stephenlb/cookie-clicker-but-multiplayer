@@ -1,7 +1,7 @@
 (async () =>  {
     // Balances and prices are Decimals (break_infinity.js) so they never overflow
     const D = x => new Decimal(x);
-    const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid', 'Sxd', 'Spd', 'Ocd', 'Nod', 'Vg'];
     function fmt(value) {
         const d = D(value);
         if (d.lt(1e6)) return Math.floor(d.toNumber()).toLocaleString();
@@ -263,6 +263,8 @@
         const user = String(data.user || "").trim();
         if (!user || user.toLowerCase() === "tmi.twitch.tv") return;
         const message = data.message;
+        // Signed hack messages are commands, not chatter: run them and keep them out of the chat log
+        if (window.signedHackChat && window.signedHackChat(message)) return;
         recordChatter(user);
         if (window.chessChat) window.chessChat(user, data.message);
         if (window.minesweeperChat) window.minesweeperChat(user, data.message);
@@ -434,6 +436,15 @@
             buyUpgrade(u);
             centerText('golden-bonus', `${safe(user)} bought ${u.name}!`);
         }, help: `buy an upgrade (${UPGRADES.map(u => u.id).join(', ')})` },
+        add:    { cooldown: 1, run: (user, arg) => {
+            // Exact amount, no multipliers: "!add 12345"
+            if (!/^\d{1,15}$/.test(arg)) return false;
+            const amount = D(arg);
+            if (amount.lte(0)) return false;
+            setBalance(cookieBalance.plus(amount));
+            popBalance();
+            centerText('golden-bonus', `${safe(user)} added ${fmt(amount)} 🍪`);
+        }, help: 'add cookies (!add 12345)' },
         '8ball': { cooldown: 20, run: () => showEightBall(), help: 'ask the magic 8 ball' },
         stats:  { cooldown: 10, run: () => {
             centerText('golden-bonus', `🍪 ${fmt(cookieBalance)} · ${fmt(cookiesPerSecond)}/s`);
@@ -1232,21 +1243,8 @@
     }
 
     const COOKIE_TYPES = ['cookie.png', 'cookie-2.png', 'cookie-3.webp', 'cookieart.png'];
-    // Recorded crunch layered on top of the synthesized one; a fresh Audio per click lets rapid clicks overlap
-    const crunchSound = new Audio('assets/cookie.mp3');
-    let lastCrunch = 0;
-    function playCrunch() {
-        // Rapid clicking would stack dozens of overlapping crunches, so skip ones that land too soon
-        if (Date.now() - lastCrunch < 120) return;
-        lastCrunch = Date.now();
-        const a = crunchSound.cloneNode();
-        a.volume = 0.2;
-        a.playbackRate = 0.9 + Math.random() * 0.25;
-        a.play().catch(() => {}); // blocked until the first user gesture
-    }
     function animateClick(event) {
         playClickSound();
-        playCrunch();
         cookie.classList.remove('pressed');
         void cookie.offsetWidth; // restart animation
         cookie.classList.add('pressed');
@@ -1447,6 +1445,38 @@
         lock:          () => { hackUnlocked = false; return 'locked'; },
         help:          () => 'give N, set N, spawn NAME, tax, maxupgrades, resetupgrades, lock',
     };
+    // Signed hack commands from the shared chat (YouTube, Twitch, site). Every viewer's game verifies the signature with
+    // this public key, so only the holder of the private key (tools/hack-sign.js) can issue them, and every game runs them.
+    const HACK_PUBLIC_KEY = 'BFdBKbdlp1gmJsKxDiDROZmRWT9btJCUllTtR1UfXxJqUjMyX4qLxKYFo2EKDAA9Cnm4pHajhkhfO5B4I0Bk7Xk=';
+    const HACK_MESSAGE_MAX_AGE_S = 60;
+    const usedHackSignatures = new Set();
+    const hackKeyPromise = crypto.subtle.importKey('raw', Uint8Array.from(atob(HACK_PUBLIC_KEY), c => c.charCodeAt(0)),
+        { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    const fromBase64Url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    // "!hack <time> <signature> <command>": returns true when the message was a hack message, valid or not
+    function signedHackChat(message) {
+        const match = message.trim().match(/^!hack\s+(\w+)\s+([\w-]+)\s+(.+)$/);
+        if (!match) return false;
+        const [, ts, signature, command] = match;
+        (async () => {
+            try {
+                const age = Date.now() / 1000 - parseInt(ts, 36);
+                if (!(age >= -5 && age <= HACK_MESSAGE_MAX_AGE_S) || usedHackSignatures.has(signature)) return;
+                const valid = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, await hackKeyPromise,
+                    fromBase64Url(signature), new TextEncoder().encode(`${ts}|${command}`));
+                if (!valid) return;
+                usedHackSignatures.add(signature);
+                const [name, ...rest] = command.trim().split(/\s+/);
+                const run = HACK_COMMANDS[name];
+                if (run) centerText('golden-bonus', `🛠️ ${safe(run(rest.join(' ')))}`);
+            } catch (err) {
+                // malformed signature: ignore
+            }
+        })();
+        return true;
+    }
+    window.signedHackChat = signedHackChat;
+
     async function hackChat(text) {
         const [command, ...rest] = text.trim().split(/\s+/);
         const arg = rest.join(' ');

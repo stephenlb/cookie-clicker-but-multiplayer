@@ -821,6 +821,7 @@ button#cookie::before,
     width: 100%;
     font-size: 40px;
     color: #5a3318;
+    text-shadow: 0 0 6px #fff, 0 0 12px #fff;
 }
 #jar-inside .jar-exit {
     position: absolute;
@@ -833,6 +834,38 @@ button#cookie::before,
     cursor: pointer;
     z-index: 2;
 }
+.jar-room { position: absolute; inset: 0; display: none; }
+.jar-room.active { display: block; }
+.room-hall { background: radial-gradient(ellipse at center, #f6d9a0 0%, #c98f4a 70%, #8a5a2a 100%); }
+.room-living { background: radial-gradient(ellipse at center, #f2b8a0 0%, #c9704a 75%, #7a3a2a 100%); }
+.room-kitchen { background: repeating-conic-gradient(#fff8e0 0 25%, #e8d8a8 0 50%) 0 0 / 80px 80px; }
+.room-bedroom { background: radial-gradient(ellipse at center, #c9b8f0 0%, #7a68b8 75%, #3a2f6a 100%); }
+.room-library { background: radial-gradient(ellipse at center, #b88a5a 0%, #6a4220 75%, #3a2210 100%); }
+.room-bathroom { background: repeating-conic-gradient(#d8f0f4 0 25%, #a8d4de 0 50%) 0 0 / 60px 60px; }
+.room-decor { position: absolute; transform: translateX(-50%); line-height: 1; pointer-events: none; }
+.room-door {
+    position: absolute;
+    width: 90px;
+    height: 150px;
+    font: inherit;
+    cursor: pointer;
+    z-index: 2;
+    background: #7b4a22;
+    color: #fff;
+    border: 4px solid #4a2a10;
+    border-radius: 45px 45px 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+.room-door:hover { background: #9a6030; }
+.room-door-icon { font-size: 34px; }
+.room-door-label { font-size: 14px; }
+.room-door.door-left { left: 5vw; bottom: 14vh; }
+.room-door.door-right { right: 5vw; bottom: 14vh; }
+.room-door.door-top { left: 50%; top: 14vh; transform: translateX(-50%); }
 .jar-cookie {
     position: absolute;
     width: 80px;
@@ -852,6 +885,33 @@ button#cookie::before,
     transform: translateX(-50%);
     font-size: 40px;
     line-height: 1;
+}
+/* The very tired librarian: slumps slowly, snoring */
+.jar-librarian {
+    width: 110px;
+    height: 110px;
+    animation: librarian-droop 5s ease-in-out infinite;
+    z-index: 1;
+}
+.jar-librarian-body { display: block; font-size: 100px; line-height: 1; }
+.jar-librarian .jar-hat { top: -20px; left: 75%; font-size: 36px; }
+.jar-zzz {
+    position: absolute;
+    right: -10px;
+    top: -50px;
+    font-size: 30px;
+    animation: librarian-zzz 3s ease-in infinite;
+}
+@keyframes librarian-droop {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    40% { transform: rotate(14deg) translateY(10px); }
+    55% { transform: rotate(14deg) translateY(10px); }
+    60% { transform: rotate(2deg) translateY(0); }
+}
+@keyframes librarian-zzz {
+    from { opacity: 0; transform: translateY(20px) scale(0.6); }
+    30% { opacity: 1; }
+    to { opacity: 0; transform: translateY(-30px) scale(1.2); }
 }
 @keyframes jar-bob {
     from { translate: 0 0; }
