@@ -50,9 +50,15 @@ button#cookie {
     position: relative;
 }
 button#cookie img {
+    --skin-filter: brightness(1);
+    object-fit: contain;
     animation: cookie-breathe 3s ease-in-out infinite;
     filter: drop-shadow(0 1.5vh 1.5vh rgba(90, 40, 0, 0.35));
     transition: filter 0.15s ease;
+}
+button#cookie img {
+    filter: var(--skin-filter) var(--tint, brightness(1)) drop-shadow(0 1.5vh 1.5vh rgba(90, 40, 0, 0.35));
+    transition: filter 2s ease;
 }
 button#cookie:hover img {
     filter: drop-shadow(0 1.5vh 2vh rgba(90, 40, 0, 0.45)) brightness(1.08);
@@ -767,3 +773,335 @@ button#cookie::before,
 #weapon-menu.open { display: flex; }
 #weapon-menu button { padding: 6px 10px; text-align: left; cursor: pointer; }
 #weapon-menu button.selected { background: #ffd24a; font-weight: bold; }
+
+/* Secret door + inside of the cookie jar */
+#secret-door {
+    position: fixed;
+    left: 6px;
+    bottom: 6px;
+    width: 14px;
+    height: 24px;
+    background: #5a3318;
+    border-radius: 7px 7px 0 0;
+    opacity: 0.12;
+    cursor: pointer;
+    z-index: 50;
+    transition: opacity 0.3s ease;
+}
+#secret-door:hover { opacity: 0.9; }
+#secret-door .door-knob {
+    position: absolute;
+    right: 2px;
+    top: 13px;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: gold;
+}
+#jar-inside {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: none;
+    overflow: hidden;
+    background: radial-gradient(ellipse at center, #f6d9a0 0%, #c98f4a 70%, #8a5a2a 100%);
+}
+#jar-inside.open { display: block; }
+#jar-inside .jar-glass {
+    position: absolute;
+    inset: 3vh 3vw;
+    border: 1.2vh solid rgba(255, 255, 255, 0.45);
+    border-radius: 6vh;
+    box-shadow: inset 0 0 8vh rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+}
+#jar-inside .jar-title {
+    position: absolute;
+    top: 6vh;
+    width: 100%;
+    font-size: 40px;
+    color: #5a3318;
+}
+#jar-inside .jar-exit {
+    position: absolute;
+    bottom: 5vh;
+    left: 50%;
+    transform: translateX(-50%);
+    font: inherit;
+    font-size: 20px;
+    padding: 1vh 2vw;
+    cursor: pointer;
+    z-index: 2;
+}
+.jar-cookie {
+    position: absolute;
+    width: 80px;
+    height: 80px;
+    transform: rotate(var(--tilt));
+    animation: jar-bob var(--bob) ease-in-out var(--delay) infinite alternate;
+}
+.jar-cookie img {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.jar-cookie .jar-hat {
+    position: absolute;
+    left: 50%;
+    top: -26px;
+    transform: translateX(-50%);
+    font-size: 40px;
+    line-height: 1;
+}
+@keyframes jar-bob {
+    from { translate: 0 0; }
+    to { translate: 0 -14px; }
+}
+
+/* Fullscreen alert when chat sends "message" */
+#message-alert {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.85);
+    color: #ff5a1f;
+    font-size: 12vw;
+    pointer-events: none;
+    text-shadow: 0 0 3vw #ff9500;
+}
+#message-alert.show {
+    display: flex;
+    animation: message-pulse 0.4s ease-in-out infinite alternate;
+}
+@keyframes message-pulse {
+    from { transform: scale(1); }
+    to { transform: scale(1.08); }
+}
+
+/* Battleship (shares the minesweeper panel look) */
+#battleship {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.7rem;
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 0.8rem;
+}
+.ship-status { font-weight: bold; margin-bottom: 0.4rem; }
+.ship-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 2px;
+    max-width: 18rem;
+    margin: 0 auto;
+}
+.ship-label, .ship-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }
+.ship-label { opacity: 0.6; }
+.ship-cell { background: rgba(60, 130, 200, 0.45); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 3px; }
+.ship-cell.miss { background: rgba(60, 130, 200, 0.2); }
+.ship-cell.hit { background: rgba(214, 40, 40, 0.6); }
+.ship-cell.reveal { background: rgba(120, 120, 130, 0.6); }
+.ship-votes { margin: 0.3rem 0 0; padding-left: 1.2rem; min-height: 3.6em; text-align: left; }
+.ship-score { opacity: 0.8; }
+
+/* On-site chat input */
+#chat-form { flex: none; display: flex; gap: 0.3rem; margin: 0.3rem 0.5rem; }
+#chat-input { flex: 1; min-width: 0; font: inherit; padding: 0.4rem 0.6rem; border-radius: 0.5rem; border: 1px solid rgba(120, 80, 40, 0.4); }
+#chat-form button { font: inherit; cursor: pointer; }
+
+/* Fullscreen magic 8 ball */
+#eight-ball {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(10, 5, 40, 0.92);
+    color: #e9d8ff;
+    text-align: center;
+    text-shadow: 0 0 3vw #9b5cff;
+}
+#eight-ball.show { display: flex; animation: message-pulse 0.8s ease-in-out infinite alternate; }
+.eight-ball-icon { font-size: 22vw; line-height: 1; }
+.eight-ball-answer { font-size: 6vw; padding: 0 5vw; }
+
+/* 3D cookie */
+#game { perspective: 1000px; }
+button#cookie {
+    --rx: 0deg; --ry: 0deg; --mx: 35%; --my: 30%;
+    transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+    transform-style: preserve-3d;
+    background: radial-gradient(circle at var(--mx) var(--my), rgba(255, 255, 235, 0.55), rgba(255, 255, 215, 0.2) 55%, rgba(90, 40, 0, 0.25));
+    box-shadow: 0 3vh 4vh rgba(60, 25, 0, 0.35), inset 0 -1.5vh 3vh rgba(90, 40, 0, 0.25), inset 0 1vh 2vh rgba(255, 255, 255, 0.4);
+}
+button#cookie img { transform: translateZ(4vh); }
+button#cookie::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    transform: translateZ(6vh);
+    background: radial-gradient(circle at var(--mx) var(--my), rgba(255, 255, 255, 0.35), transparent 40%);
+}
+
+/* Talking jar cookies */
+.jar-cookie { cursor: pointer; }
+.jar-bubble {
+    position: absolute;
+    z-index: 3;
+    width: 240px;
+    transform: translateX(-50%);
+    padding: 0.5rem 0.7rem;
+    box-sizing: border-box;
+    text-align: left;
+    color: #5a2d00;
+    background: #fffbe8;
+    border: 3px solid #7b3f00;
+    border-radius: 1rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+.jar-bubble.visible { opacity: 1; }
+.jar-bubble strong { display: block; }
+.jar-talk {
+    position: absolute;
+    bottom: 12vh;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.3rem;
+    z-index: 2;
+}
+.jar-talk input { width: 28vw; min-width: 200px; font: inherit; padding: 0.4rem 0.6rem; border-radius: 0.5rem; border: 1px solid #7b3f00; }
+.jar-talk button { font: inherit; cursor: pointer; }
+
+.confetti {
+    position: fixed;
+    width: 10px;
+    height: 16px;
+    z-index: 2500;
+    pointer-events: none;
+    border-radius: 2px;
+}
+
+/* Cookie clicker inside the cookie clicker */
+#inception {
+    margin: 0 0 1rem;
+    padding: 0.5rem 0.7rem;
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 0.8rem;
+    background: rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 0.8rem;
+}
+.inception-level { margin-top: 0.4rem; padding: 0.4rem; border: 1px dashed rgba(255, 255, 255, 0.6); border-radius: 0.6rem; background: rgba(0, 0, 0, 0.06); }
+.inception-title { font-weight: bold; }
+.inception-cookie { font-size: 2rem; background: none; border: none; cursor: pointer; }
+.inception-cookie:active { transform: scale(0.9); }
+.inception-buttons { display: flex; gap: 0.3rem; justify-content: center; flex-wrap: wrap; }
+.inception-buttons button[hidden] { display: none; }
+
+/* Weather */
+#weather-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 5; }
+.weather-particle { position: absolute; top: -2rem; font-size: 1rem; animation: weather-fall linear infinite; }
+@keyframes weather-fall { to { transform: translateY(110vh) translateX(3vw); } }
+#weather-layer.sunny { background: radial-gradient(circle at 90% 0%, rgba(255, 220, 80, 0.55), transparent 55%); }
+#weather-layer.storm { animation: lightning 7s infinite; }
+@keyframes lightning {
+    0%, 92%, 96%, 100% { background: transparent; }
+    93%, 97% { background: rgba(255, 255, 255, 0.55); }
+}
+.weather-particle.catchable { pointer-events: auto; cursor: pointer; font-size: 2.2rem; }
+
+/* Evil cookie: small, right next to the real one */
+#cookie-wrap { position: relative; display: inline-block; }
+button#evil-cookie {
+    position: absolute;
+    right: -6vh;
+    bottom: 2vh;
+    width: 7vh;
+    height: 7vh;
+    padding: 0.5vh;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(60, 0, 0, 0.35);
+    cursor: pointer;
+    outline: none;
+}
+button#evil-cookie img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+    filter: grayscale(1) brightness(0.35) sepia(1) hue-rotate(-50deg) saturate(6) drop-shadow(0 0 0.8vh red);
+}
+button#evil-cookie:hover { transform: scale(1.1) rotate(-8deg); }
+
+/* Sunglasses on the main cookie */
+button#cookie .sunglasses {
+    position: absolute;
+    left: 24%;
+    top: 36%;
+    width: 52%;
+    pointer-events: none;
+    filter: drop-shadow(0 0.5vh 0.5vh rgba(0, 0, 0, 0.4));
+    /* the cookie is a 3D scene (image at translateZ 4vh), so the glasses must sit in front of it */
+    transform: translateZ(8vh);
+}
+
+/* Day and night */
+#night-overlay {
+    position: fixed; inset: 0; pointer-events: none; z-index: 4;
+    background: rgba(8, 16, 60, var(--dark, 0));
+    mix-blend-mode: multiply;
+    transition: background 5s linear;
+}
+.night-star {
+    position: absolute; width: 3px; height: 3px; border-radius: 50%;
+    background: #fff; box-shadow: 0 0 6px #fff;
+    opacity: var(--stars, 0);
+    animation: star-twinkle 3s ease-in-out infinite alternate;
+}
+@keyframes star-twinkle { to { transform: scale(1.8); } }
+
+/* Font picker */
+#font-picker { position: fixed; right: 0.6rem; bottom: 0.6rem; z-index: 30; font-family: sans-serif; font-size: 0.8rem; text-align: left; }
+.font-toggle { width: 2.4rem; height: 2.4rem; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.6); cursor: pointer; font-weight: bold; }
+.font-panel { position: absolute; right: 0; bottom: 3rem; width: 14rem; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; background: rgba(255, 255, 255, 0.92); border-radius: 0.6rem; box-shadow: 0 0.3rem 1rem rgba(0, 0, 0, 0.3); }
+.font-panel[hidden] { display: none; }
+.font-upload { cursor: pointer; text-decoration: underline; }
+
+.golden-cookie.pubnub-cookie {
+    background: radial-gradient(circle at 35% 30%, #ff7a7a, #ef3a43 55%, #a3121a);
+    filter: drop-shadow(0 0 16px #ef3a43);
+    width: 110px;
+    height: 110px;
+    font-size: 40px;
+    line-height: 110px;
+    text-align: center;
+    border: 3px solid #fff;
+    border-radius: 50%;
+}
+.golden-cookie.pubnub-cookie::after {
+    content: "PubNub";
+    position: absolute;
+    left: 0; right: 0; bottom: 10px;
+    font-size: 14px;
+    line-height: 1;
+    font-weight: bold;
+    color: #fff;
+}

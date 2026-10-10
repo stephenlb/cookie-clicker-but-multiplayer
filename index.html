@@ -15,15 +15,20 @@
         <div id=chat>
             <!-- Chat appears here -->
         </div>
+        <form id=chat-form autocomplete=off>
+            <input id=chat-input maxlength=200 placeholder="Chat here (no YouTube/Twitch needed)">
+            <button>Send</button>
+        </form>
         <div id=instructions>
             <strong>Chat commands</strong>
             <ul>
                 <li><code>!red</code> / <code>!blue</code> join a versus team</li>
                 <li><code>!versus</code> start a 60s team battle (messages score)</li>
                 <li><code>hydrate</code> 💧 water glass, <code>golden</code>, <code>cheese</code> 🧀, <code>diamond</code> 💎, <code>boss</code> spawn cookies</li>
-                <li><code>!gift</code> <code>!attack</code> <code>!kevin</code> <code>!tax</code> <code>!irs</code> <code>!party</code> <code>!rain</code> <code>!shake</code> <code>!color teal</code> <code>!buy oven</code> <code>!stats</code> <code>!help</code></li>
+                <li><code>!gift</code> <code>!attack</code> <code>!kevin</code> <code>!tax</code> <code>!irs</code> <code>!party</code> <code>!rain</code> <code>!shake</code> <code>!color teal</code> <code>!buy oven</code> <code>!8ball</code> <code>!stats</code> <code>!help</code></li>
                 <li>Chess: vote with <code>!e4</code>, <code>!Nf3</code>, <code>!e2e4</code></li>
                 <li>Minesweeper: <code>!dig e4</code> / <code>!flag e4</code></li>
+                <li>Battleship: <code>!fire e4</code></li>
                 <li>A 6-digit hex code like <code>ff8800</code> changes the background</li>
             </ul>
         </div>
@@ -36,8 +41,13 @@
             <h3 id=players></h3>
             <h3 id=taxTimer></h3>
             <h3 id=buff></h3>
+            <h3 id=clock></h3>
+            <h3 id=weather></h3>
             <h3 id=versus></h3>
-            <button id=cookie><img src="assets/cookieart.png"></button>
+            <div id=cookie-wrap>
+                <button id=cookie><img src="assets/cookieart.png"><svg class=sunglasses viewBox="0 0 100 40" aria-hidden=true><path d="M2 8 H98" stroke="#111" stroke-width="5" stroke-linecap="round"/><path d="M6 8 H46 V22 Q46 36 32 36 H20 Q6 36 6 22 Z" fill="#111"/><path d="M54 8 H94 V22 Q94 36 80 36 H68 Q54 36 54 22 Z" fill="#111"/><path d="M46 12 Q50 6 54 12" stroke="#111" stroke-width="4" fill="none"/><path d="M12 14 L24 14 L14 24 Z M60 14 L72 14 L62 24 Z" fill="#fff" opacity=".35"/></svg></button>
+                <button id=evil-cookie title="Do not click"><img src="assets/cookieart.png"></button>
+            </div>
             <div id=reactions></div>
         </div>
     </div>
@@ -54,6 +64,13 @@
             <ol class=mines-votes></ol>
             <div class=mines-score></div>
         </div>
+        <div id=battleship class=side-panel>
+            <div class=ship-status></div>
+            <div class=ship-grid></div>
+            <ol class=ship-votes></ol>
+            <div class=ship-score></div>
+        </div>
+        <div id=inception class=side-panel><strong>Cookie Clicker (inside Cookie Clicker)</strong></div>
         <h2>Shop</h2>
         <div id=upgrades><!-- Upgrades appear here --></div>
         <h2>Achievements</h2>
@@ -68,4 +85,11 @@
 <script src=js/hashcache.js></script>
 <script src=js/chess.js></script>
 <script src=js/minesweeper.js></script>
+<script src=js/battleship.js></script>
+<script src=js/inception.js></script>
+<script src=js/weather.js></script>
+<script src=js/daynight.js></script>
+<script src=js/cookie-look.js></script>
+<script src=js/fonts.js></script>
 <script src=js/game.js></script>
+<script src=js/jar.js></script>

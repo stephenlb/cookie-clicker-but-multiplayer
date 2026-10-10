@@ -37,38 +37,38 @@ Made using **PubNub**
 - [x] game state with currnet cookie balance
 
 ## Shop & Stuff
-- [ ] SHOP to buy things left menu panel
-- [ ] shop for upgrades @fishflopper99
-- [ ] achievements PRO_Stumblr
-- [ ] acheivements top left of screen
-- [ ] use different cookie skins for milestones
-- [ ] global events on cookie milestones
-- [ ] hidden easter egg (secrets)
+- [x] SHOP to buy things left menu panel
+- [x] shop for upgrades @fishflopper99
+- [x] achievements PRO_Stumblr
+- [x] acheivements top left of screen
+- [x] use different cookie skins for milestones
+- [x] global events on cookie milestones
+- [x] hidden easter egg (secrets)
 
 ## Multiplayer
 - [x] leaderboard PRO_Stumblr
 - [x] names of people who clicked cookie
-- [ ] multiplayer with pubnub
-- [ ] RATE LIMIT hash caching to prevent cheating
+- [x] multiplayer with pubnub
+- [x] RATE LIMIT hash caching to prevent cheating
 
 ## Visual Effects
-- [ ] spin cookie while idle
-- [ ] rotate cookie on click
-- [ ] click anywhere to cookie
-- [ ] add cookie crumb drops on cookie click Mikebloger
-- [ ] particles on cookie click
-- [ ] coffettii
-- [ ] cookie balance animates
-- [ ] Sound on click Crunch of the cookie
-- [ ] music
-- [ ] add sunglasses to cookie
-- [ ] cookie bites taken as you play
+- [x] spin cookie while idle
+- [x] rotate cookie on click
+- [x] click anywhere to cookie
+- [x] add cookie crumb drops on cookie click Mikebloger
+- [x] particles on cookie click
+- [x] coffettii
+- [x] cookie balance animates
+- [x] Sound on click Crunch of the cookie
+- [x] music
+- [x] add sunglasses to cookie
+- [x] cookie bites taken as you play
 
 ## UI
-- [ ] build UI, cookie
-- [ ] cookie image style chooser
-- [ ] cookie image
-- [ ] Pixelate the FONT
+- [x] build UI, cookie
+- [x] cookie image style chooser
+- [x] cookie image
+- [x] Pixelate the FONT
 - [ ] custom user font
 - [ ] when you click on the cookie it changes color
 

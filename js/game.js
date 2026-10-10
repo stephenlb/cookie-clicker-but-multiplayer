@@ -11,7 +11,7 @@
     }
     let cookiesPerSecond = D(0);
     let cookieBalance = getCookies();
-    const chat_channel = localStorage.getItem("chat_channel");
+    const chat_channel = localStorage.getItem("chat_channel") || "cookie-clicker-chat";
     const cookieBalanceDisplay = document.querySelector('#cookies');
     const cookiePerSecondBalanceDisplay = document.querySelector('#cookiesPerSecond');
     const DIFFICULTY = 4;
@@ -65,6 +65,7 @@
         { id: 'fast',    name: 'Fast Clicker',   desc: 'auto-clicks 2 times/sec',    cost: 400 },
         { id: 'planet',  name: 'Cookie Planet',  desc: 'bakes 2,000,000 cookies/sec',     cost: 1e9 },
         { id: 'dimension', name: 'Cookie Dimension', desc: 'bakes 2,000,000,000 cookies/sec', cost: 1e12 },
+        { id: 'milk',    name: 'Cookie + Milk 🥛', desc: 'triples (3X) all cookies earned', cost: 10000, growth: 10, max: 5 },
     ];
     const owned = JSON.parse(localStorage.getItem("upgrades") || "{}");
     const level = id => owned[id] || 0;
@@ -242,6 +243,20 @@
     const recordChatter = createLeaderboard("leaderboard", "#leaderboard ol");
     const recordClicker = createLeaderboard("click_leaderboard", "#click-leaderboard ol");
 
+    let messageAlertTimer;
+    function showMessageAlert() {
+        let alert = document.getElementById("message-alert");
+        if (!alert) {
+            alert = document.createElement("div");
+            alert.id = "message-alert";
+            alert.textContent = "MESSAGE 🗣🔥🔥";
+            document.body.appendChild(alert);
+        }
+        alert.classList.add("show");
+        clearTimeout(messageAlertTimer);
+        messageAlertTimer = setTimeout(() => alert.classList.remove("show"), 3000);
+    }
+
     function chatReceiver(data) {
         if (!data || typeof data.message !== "string") return;
         // Drop Twitch system notices and anonymous senders
@@ -251,7 +266,9 @@
         recordChatter(user);
         if (window.chessChat) window.chessChat(user, data.message);
         if (window.minesweeperChat) window.minesweeperChat(user, data.message);
+        if (window.battleshipChat) window.battleshipChat(user, data.message);
         chatCommand(user, data.message);
+        if (message.trim().toLowerCase() === "message") showMessageAlert();
 
         // textContent keeps user input from being interpreted as HTML
         const line = document.createElement("div");
@@ -345,6 +362,7 @@
         { pattern: /\bboss\b/i,             spawn: () => spawnBossCookie(), last: 0 },
         { pattern: /\bboom\b/i,             spawn: () => damageFight?.(BOOM_DAMAGE), last: 0 },
         { pattern: /\bcheese\b|🧀/iu,       spawn: () => spawnCheese(), last: 0 },
+        { pattern: /\bpubnub\b/i,           spawn: () => spawnPubNubCookie(), last: 0 },
         { pattern: /\bgolden\b/i,           spawn: () => spawnGoldenCookie(), last: 0 },
         { pattern: /\bdiamonds?\b|💎/iu,     spawn: () => spawnDiamondCookie(), last: 0 },
     ];
@@ -359,10 +377,32 @@
 
     // Chat commands: "!name args". Each has a room-wide cooldown so one chatter cannot spam the screen,
     // and a per-user cooldown on top for the ones that pay out.
+    // Confetti: colored paper bits burst from the top of the screen and flutter down
+    const CONFETTI_COLORS = ['#ff4d6d', '#ffd23f', '#3bceac', '#4d9de0', '#b967ff', '#ff9f1c'];
+    function confetti(count = 120) {
+        const w = window.innerWidth, h = window.innerHeight;
+        for (let i = 0; i < count; i++) {
+            if (document.querySelectorAll('.confetti').length > 400) return;
+            const el = document.createElement('div');
+            el.className = 'confetti';
+            el.style.background = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+            el.style.left = `${Math.random() * w}px`;
+            el.style.top = '-20px';
+            document.body.appendChild(el);
+            const sway = Math.random() * 300 - 150;
+            const anim = el.animate([
+                { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+                { transform: `translate(${sway}px, ${h * 0.5}px) rotate(${Math.random() * 720}deg)`, opacity: 1, offset: 0.6 },
+                { transform: `translate(${sway * 1.5}px, ${h + 40}px) rotate(${Math.random() * 1440}deg)`, opacity: 0.8 },
+            ], { duration: 2500 + Math.random() * 2500, delay: Math.random() * 600, easing: 'ease-in', fill: 'backwards' });
+            anim.onfinish = () => el.remove();
+        }
+    }
     const centerText = (className, text) => showFloatingText(className, text, window.innerWidth / 2, window.innerHeight / 2);
     const COMMANDS = {
         attack: { cooldown: 30, run: () => spawnAttackCookie(), help: 'cookie attack' },
         cheese: { cooldown: 30, run: () => spawnCheese(), help: 'spawn a cheese' },
+        pubnub: { cooldown: 60, run: () => spawnPubNubCookie(), help: 'spawn the very important PubNub cookie' },
         kevin:  { cooldown: 60, run: () => spawnKevin(), help: 'summon Kevin' },
         tax:    { cooldown: 60, run: () => collectTax(), help: 'call the tax man' },
         irs:    { cooldown: 120, run: () => callIrs(), help: 'call the IRS' },
@@ -370,7 +410,9 @@
             addCookies(25);
             centerText('golden-bonus', `${safe(user)} baked a gift! +25 🍪`);
         }, help: 'free cookies (once every 2 min)' },
-        party:  { cooldown: 15, run: () => { floatEmoji('🎉🎊🥳🍪🎈'); }, help: 'party emoji' },
+        party:  { cooldown: 15, run: () => { floatEmoji('🎉🎊🥳🍪🎈'); confetti(); }, help: 'party emoji' },
+        confetti: { cooldown: 15, run: () => confetti(200), help: 'confetti!' },
+        weather: { cooldown: 10, run: () => { centerText('golden-bonus', safe(window.weatherForecast())); }, help: 'current weather' },
         rain:   { cooldown: 15, run: () => { floatEmoji('🍪🍪🍪🍪🍪'); }, help: 'cookie rain' },
         shake:  { cooldown: 15, run: () => {
             document.body.animate([
@@ -392,6 +434,7 @@
             buyUpgrade(u);
             centerText('golden-bonus', `${safe(user)} bought ${u.name}!`);
         }, help: `buy an upgrade (${UPGRADES.map(u => u.id).join(', ')})` },
+        '8ball': { cooldown: 20, run: () => showEightBall(), help: 'ask the magic 8 ball' },
         stats:  { cooldown: 10, run: () => {
             centerText('golden-bonus', `🍪 ${fmt(cookieBalance)} · ${fmt(cookiesPerSecond)}/s`);
         }, help: 'show balance' },
@@ -399,6 +442,26 @@
             centerText('golden-bonus', 'Commands: ' + Object.keys(COMMANDS).map(c => '!' + c).join(' ') + ' !red !blue !versus + chess moves');
         }, help: 'list commands' },
     };
+    // Fullscreen magic 8 ball answer
+    const EIGHT_BALL = ['It is certain.', 'Without a doubt.', 'Yes, definitely.', 'Most likely.', 'Outlook good.', 'Signs point to yes.',
+        'Reply hazy, try again.', 'Ask again later.', 'Cannot predict now.', 'Don\'t count on it.', 'My reply is no.', 'Very doubtful.',
+        'Ask the cookie.', 'Only if you bake more.'];
+    let eightBallTimer;
+    function showEightBall() {
+        let el = document.getElementById('eight-ball');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'eight-ball';
+            el.innerHTML = '<div class=eight-ball-icon>🎱</div><div class=eight-ball-answer></div>';
+            el.addEventListener('click', () => el.classList.remove('show'));
+            document.body.appendChild(el);
+        }
+        el.querySelector('.eight-ball-answer').textContent = EIGHT_BALL[Math.floor(Math.random() * EIGHT_BALL.length)];
+        el.classList.add('show');
+        clearTimeout(eightBallTimer);
+        eightBallTimer = setTimeout(() => el.classList.remove('show'), 5000);
+    }
+
     const commandLast = {}; // command -> last run
     const commandUserLast = {}; // command + user -> last run
     function chatCommand(user, message) {
@@ -419,7 +482,15 @@
     window.minesweeperWin = () => {
         const prize = Decimal.max(1000, cookieBalance.times(0.05).round());
         addCookies(prize);
+        confetti(200);
         centerText('golden-bonus', `Minesweeper cleared! +${fmt(prize)} 🍪`);
+    };
+
+    window.battleshipWin = () => {
+        const prize = Decimal.max(1000, cookieBalance.times(0.05).round());
+        addCookies(prize);
+        confetti(200);
+        centerText('golden-bonus', `Fleet sunk! +${fmt(prize)} 🍪`);
     };
 
     // Versus: chat picks a team with !red / !blue, then !versus starts a round.
@@ -479,9 +550,17 @@
         // +1x per power of ten above a million (a linear multiplier made the balance explode)
         cookies = D(cookies).times(1 + Math.floor(cookieBalance.div(1000000).plus(1).log10()));
         if (Date.now() < hydratedUntil) cookies = cookies.times(HYDRATED_MULTIPLIER);
+        cookies = cookies.times(3 ** level('milk')).times(window.weatherMultiplier ? window.weatherMultiplier() : 1)
+            .times(window.dayNightMultiplier ? window.dayNightMultiplier() : 1);
         setBalance(cookieBalance.plus(cookies));
         popBalance();
     }
+
+    // Cookies falling from the sky (cookie weather) pay out when caught
+    document.addEventListener('weather-cookie', event => {
+        addCookies(clickValue() * 5);
+        showFloatingText('golden-bonus', `+${fmt(clickValue() * 5)} 🍪`, event.detail.x, event.detail.y);
+    });
 
     // Short springy pop on every gain; restarting the animation keeps rapid gains snappy
     function popBalance() {
@@ -575,6 +654,8 @@
         if (event.id === playerId) return;
         if (event.type === "emoji" && typeof event.emoji === "string") {
             floatEmoji(event.emoji.slice(0, 16));
+        } else if (event.type === "milestone" && Number.isInteger(event.power) && event.power >= 3 && event.power < 100) {
+            globalEvent(name, event.power);
         } else if (event.type === "grab") {
             addCookies(GRAB_GIFT);
             showFloatingText('golden-bonus', `${safe(name)} grabbed a golden cookie! +${GRAB_GIFT} 🍪 for you`, window.innerWidth / 2, window.innerHeight / 3);
@@ -590,6 +671,19 @@
     sendPresence();
     setInterval(sendPresence, PRESENCE_INTERVAL_MS);
     setInterval(renderPlayers, PRESENCE_INTERVAL_MS);
+
+    // Global events: when anyone's balance hits a new power of ten the whole room celebrates
+    function globalEvent(name, power) {
+        const label = fmt(D(10).pow(power));
+        const kind = power % 3;
+        const bonus = Decimal.max(100, cookieBalance.times(0.01).round());
+        addCookies(bonus);
+        centerText('golden-bonus', `🎆 ${safe(name)} reached ${label} cookies! ${['Cookie rain', 'Golden hour', 'Boss incoming'][kind]} +${fmt(bonus)} 🍪`);
+        floatEmoji('🍪🎉🎆✨🥳');
+        confetti(200);
+        if (kind === 1) { spawnGoldenCookie(); setTimeout(spawnGoldenCookie, 1500); }
+        else if (kind === 2) spawnBossCookie();
+    }
 
     // Reaction bar: click an emoji to float it across everyone's screen
     const reactBar = document.getElementById("reactions");
@@ -641,10 +735,24 @@
     }
     scheduleCheese();
 
-    function spawnBonusCookie(className, lifetime, balanceShare, minBonus, puns) {
+    // PubNub: the very important cookie. Rare, big, and it pays 25% of your cookies
+    const PUBNUB_LIFETIME = 7000;
+    const PUBNUB_PUNS = ['Real-time cookie!', 'Published to every channel!', 'Subscribed and delicious!', 'Delivered in under 100ms!', 'Pub/sub/crumb!', 'Globally replicated!'];
+    function spawnPubNubCookie() {
+        spawnBonusCookie('golden-cookie pubnub-cookie', PUBNUB_LIFETIME, 0.25, 1000, PUBNUB_PUNS, '📡');
+    }
+    function schedulePubNubCookie() {
+        setTimeout(() => {
+            spawnPubNubCookie();
+            schedulePubNubCookie();
+        }, 120000 + Math.random() * 120000);
+    }
+    schedulePubNubCookie();
+
+    function spawnBonusCookie(className, lifetime, balanceShare, minBonus, puns, icon = '🧀') {
         const golden = document.createElement('button');
         golden.className = className;
-        if (puns) golden.textContent = '🧀';
+        if (puns) golden.textContent = icon;
         golden.style.left = `${Math.random() * (window.innerWidth - GOLDEN_SIZE)}px`;
         golden.style.top = `${Math.random() * (window.innerHeight - GOLDEN_SIZE)}px`;
 
@@ -661,7 +769,7 @@
             sendEvent({ type: "grab" });
             const pop = document.createElement('div');
             pop.className = 'golden-bonus';
-            pop.textContent = `${puns ? puns[Math.floor(Math.random() * puns.length)] + ' ' : ''}+${fmt(bonus)} ${puns ? '🧀' : '🍪'}`;
+            pop.textContent = `${puns ? puns[Math.floor(Math.random() * puns.length)] + ' ' : ''}+${fmt(bonus)} ${puns ? icon : '🍪'}`;
             pop.style.left = `${event.clientX}px`;
             pop.style.top = `${event.clientY}px`;
             document.body.appendChild(pop);
@@ -998,6 +1106,7 @@
             // offline or blocked: the cookie just stays quiet
         }
     }
+    setInterval(() => sayInSpeech('🍪', 'I am a cookie.'), 60000);
     setTimeout(cookieSpeak, 3000);
     setInterval(cookieSpeak, SPEECH_INTERVAL_MS);
 
@@ -1006,7 +1115,13 @@
     let lastMilestone = milestoneOf(cookieBalance);
     setInterval(() => {
         const reached = milestoneOf(cookieBalance);
-        if (reached > lastMilestone) sayInSpeech('good job', `You reached ${fmt(D(10).pow(reached))} cookies!`);
+        if (reached > lastMilestone) {
+            sayInSpeech('good job', `You reached ${fmt(D(10).pow(reached))} cookies!`);
+            if (reached >= 3) {
+                sendEvent({ type: 'milestone', power: reached });
+                globalEvent(playerName, reached);
+            }
+        }
         lastMilestone = Math.max(lastMilestone, reached);
     }, 500);
 
@@ -1050,8 +1165,33 @@
         if (!changed) return;
         localStorage.setItem("achievements", JSON.stringify(unlocked));
         renderAchievements();
+        applySkin();
     }, 500);
     renderAchievements();
+
+    // Cookie skins: the big cookie changes look at achievement milestones (highest unlocked wins)
+    const SKINS = [
+        { after: null,    name: 'Classic',   src: 'assets/cookieart.png', filter: '' },
+        { after: 'a1k',   name: 'Gooey',     src: 'assets/cookie-3.webp', filter: '' },
+        { after: 'a100k', name: 'Dark Choc', src: 'assets/cookieart.png', filter: 'brightness(0.65) saturate(1.2)' },
+        { after: 'a1m',   name: 'Golden',    src: 'assets/cookie-3.webp', filter: 'sepia(1) saturate(4) hue-rotate(-5deg) brightness(1.15)' },
+        { after: 'a1b',   name: 'Frosty',    src: 'assets/cookieart.png', filter: 'hue-rotate(180deg) saturate(1.4) brightness(1.1)' },
+        { after: 'a1t',   name: 'Berry',     src: 'assets/cookie-3.webp', filter: 'hue-rotate(290deg) saturate(1.6)' },
+        { after: 'a1qa',  name: 'Cosmic',    src: 'assets/cookieart.png', filter: 'hue-rotate(250deg) saturate(2) brightness(1.1)' },
+        { after: 'a1dc',  name: 'Singularity', src: 'assets/cookie-3.webp', filter: 'invert(1) hue-rotate(180deg) saturate(1.5)' },
+    ];
+    let currentSkin = null;
+    function applySkin() {
+        const skin = SKINS.filter(k => !k.after || unlocked[k.after]).pop();
+        if (skin === currentSkin) return;
+        const announce = currentSkin !== null;
+        currentSkin = skin;
+        const img = document.querySelector('#cookie img');
+        img.src = skin.src;
+        img.style.setProperty('--skin-filter', skin.filter || 'brightness(1)');
+        if (announce) { sayInSpeech('🍪 New cookie skin', skin.name); confetti(80); }
+    }
+    applySkin();
 
     // Synthesized crunch: a burst of filtered noise plus a short pitched thump, varied per click
     let audioCtx = null;
@@ -1072,7 +1212,7 @@
             filter.type = 'bandpass';
             filter.frequency.value = 1500 + Math.random() * 2000;
             const noiseGain = audioCtx.createGain();
-            noiseGain.gain.setValueAtTime(0.5, now);
+            noiseGain.gain.setValueAtTime(0.12, now);
             noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
             noise.connect(filter).connect(noiseGain).connect(audioCtx.destination);
             noise.start(now);
@@ -1081,7 +1221,7 @@
             const oscGain = audioCtx.createGain();
             osc.frequency.setValueAtTime(260 + Math.random() * 80, now);
             osc.frequency.exponentialRampToValueAtTime(70, now + 0.1);
-            oscGain.gain.setValueAtTime(0.35, now);
+            oscGain.gain.setValueAtTime(0.1, now);
             oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
             osc.connect(oscGain).connect(audioCtx.destination);
             osc.start(now);
@@ -1092,8 +1232,21 @@
     }
 
     const COOKIE_TYPES = ['cookie.png', 'cookie-2.png', 'cookie-3.webp', 'cookieart.png'];
+    // Recorded crunch layered on top of the synthesized one; a fresh Audio per click lets rapid clicks overlap
+    const crunchSound = new Audio('assets/cookie.mp3');
+    let lastCrunch = 0;
+    function playCrunch() {
+        // Rapid clicking would stack dozens of overlapping crunches, so skip ones that land too soon
+        if (Date.now() - lastCrunch < 120) return;
+        lastCrunch = Date.now();
+        const a = crunchSound.cloneNode();
+        a.volume = 0.2;
+        a.playbackRate = 0.9 + Math.random() * 0.25;
+        a.play().catch(() => {}); // blocked until the first user gesture
+    }
     function animateClick(event) {
         playClickSound();
+        playCrunch();
         cookie.classList.remove('pressed');
         void cookie.offsetWidth; // restart animation
         cookie.classList.add('pressed');
@@ -1128,6 +1281,63 @@
             crumb.style.setProperty('--dy', `${Math.sin(angle) * dist + 20}px`);
         }
     }
+
+    // Site chat: people not on YouTube/Twitch can post straight to the shared chat channel
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    let lastSiteChat = 0;
+    chatForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const message = chatInput.value.trim().slice(0, 200);
+        if (!message || Date.now() - lastSiteChat < 1000) return;
+        lastSiteChat = Date.now();
+        chatInput.value = '';
+        if (/^\/hack(\s|$)/i.test(message)) return hackChat(message.replace(/^\/hack\s*/i, ''));
+        pubnub.publish({ channel: chat_channel, message: { user: playerName, message } });
+    });
+    // Typing in the box must not trigger secret key combos
+    chatInput.addEventListener('keydown', event => event.stopPropagation());
+
+    // Secrets: the Konami code, or poking the title seven times
+    let secretsFound = JSON.parse(localStorage.getItem('secrets') || '{}');
+    function foundSecret(id, title, body, reward) {
+        if (secretsFound[id]) return;
+        secretsFound[id] = true;
+        localStorage.setItem('secrets', JSON.stringify(secretsFound));
+        addCookies(reward);
+        sayInSpeech(`🤫 Secret found: ${title}`, `${body} +${fmt(reward)} 🍪`);
+        floatEmoji('🍪✨🤫🎉🥚');
+        confetti();
+    }
+    const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+    let konamiAt = 0;
+    document.addEventListener('keydown', event => {
+        konamiAt = event.key === KONAMI[konamiAt] ? konamiAt + 1 : (event.key === KONAMI[0] ? 1 : 0);
+        if (konamiAt === KONAMI.length) {
+            konamiAt = 0;
+            cookie.animate([{ transform: 'rotate(0)' }, { transform: 'rotate(720deg) scale(1.3)' }, { transform: 'rotate(1080deg)' }], { duration: 1500, easing: 'ease-in-out' });
+            foundSecret('konami', 'Konami Cookie', 'Up up down down…', 1000);
+        }
+    });
+    let titlePokes = 0;
+    document.querySelector('#game h1').addEventListener('click', () => {
+        if (++titlePokes === 7) foundSecret('title', 'Ticklish Title', 'The title giggles.', 777);
+    });
+
+    // 3D cookie: it tilts toward the pointer, with a specular glint that follows it
+    cookie.addEventListener('mousemove', event => {
+        const r = cookie.getBoundingClientRect();
+        const px = (event.clientX - r.left) / r.width - 0.5;
+        const py = (event.clientY - r.top) / r.height - 0.5;
+        cookie.style.setProperty('--ry', `${px * 28}deg`);
+        cookie.style.setProperty('--rx', `${-py * 28}deg`);
+        cookie.style.setProperty('--mx', `${(px + 0.5) * 100}%`);
+        cookie.style.setProperty('--my', `${(py + 0.5) * 100}%`);
+    });
+    cookie.addEventListener('mouseleave', () => {
+        cookie.style.setProperty('--rx', '0deg');
+        cookie.style.setProperty('--ry', '0deg');
+    });
 
     // Kevin pops up every few minutes with a task. Finish it before time runs out for a cookie reward.
     const KEVIN_TASK_MS = 20000;
@@ -1183,7 +1393,7 @@
     }
     scheduleKevin();
 
-    // Hack tool (dev panel): press ` (backtick) to toggle, or use window.hack in the console
+    // Hack tool: only reachable through the chat box (see the /hack handler), never from a button or the console
     const hack = {
         give: n => addCookies(n),
         set: n => setBalance(D(n)),
@@ -1191,6 +1401,7 @@
             golden: spawnGoldenCookie,
             diamond: spawnDiamondCookie,
             cheese: spawnCheese,
+            pubnub: spawnPubNubCookie,
             attack: spawnAttackCookie,
             boss: spawnBossCookie,
             water: spawnWaterGlass,
@@ -1210,43 +1421,55 @@
             renderShop();
         },
     };
-    window.hack = hack;
 
-    const panel = document.createElement('div');
-    panel.id = 'hack-panel';
-    panel.addEventListener('mousedown', event => event.stopPropagation());
-    const title = document.createElement('div');
-    title.className = 'hack-title';
-    title.textContent = 'HACK TOOL (` to close)';
-    panel.appendChild(title);
-    const amount = document.createElement('input');
-    amount.value = '1000000';
-    amount.size = 12;
-    panel.appendChild(amount);
-    const actions = [
-        ['Give', () => hack.give(amount.value)],
-        ['Set balance', () => hack.set(amount.value)],
-        ['Golden', hack.spawn.golden],
-        ['Diamond', hack.spawn.diamond],
-        ['Attack', hack.spawn.attack],
-        ['Boss', hack.spawn.boss],
-        ['Water', hack.spawn.water],
-        ['IRS', hack.spawn.irs],
-        ['Kevin', hack.spawn.kevin],
-        ['Versus', hack.spawn.versus],
-        ['Collect tax', hack.tax],
-        ['Max upgrades', hack.maxUpgrades],
-        ['Reset upgrades', hack.resetUpgrades],
-    ];
-    for (const [label, fn] of actions) {
-        const btn = document.createElement('button');
-        btn.textContent = label;
-        btn.addEventListener('click', () => fn());
-        panel.appendChild(btn);
+    // Typed into the chat box as "/hack ...". Handled locally and never published, so other players cannot trigger it.
+    // Unlocking needs a passphrase; only its SHA-256 hash lives here.
+    const HACK_PASSPHRASE_SHA256 = '7e8b27bc4bf341901c2ba7c2a3d870408da30222bbf7688bf10cce2e2e004b6e';
+    let hackUnlocked = false;
+    const sha256Hex = async text => Array.from(new Uint8Array(
+        await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), b => b.toString(16).padStart(2, '0')).join('');
+    const hackAmount = text => {
+        const n = D(text);
+        return isNaN(n.mantissa) ? null : n;
+    };
+    const HACK_COMMANDS = {
+        give:  arg => { const n = hackAmount(arg); if (!n) return 'give needs a number'; addCookies(n); return `gave ${arg}`; },
+        set:   arg => { const n = hackAmount(arg); if (!n) return 'set needs a number'; setBalance(n); return `balance set to ${arg}`; },
+        spawn: arg => {
+            const fn = hack.spawn[arg];
+            if (!fn) return `spawn what? ${Object.keys(hack.spawn).join(', ')}`;
+            fn();
+            return `spawned ${arg}`;
+        },
+        tax:           () => { hack.tax(); return 'tax collected'; },
+        maxupgrades:   () => { hack.maxUpgrades(); return 'all upgrades maxed'; },
+        resetupgrades: () => { hack.resetUpgrades(); return 'upgrades reset'; },
+        lock:          () => { hackUnlocked = false; return 'locked'; },
+        help:          () => 'give N, set N, spawn NAME, tax, maxupgrades, resetupgrades, lock',
+    };
+    async function hackChat(text) {
+        const [command, ...rest] = text.trim().split(/\s+/);
+        const arg = rest.join(' ');
+        let reply;
+        if (command === 'unlock') {
+            hackUnlocked = await sha256Hex(arg) === HACK_PASSPHRASE_SHA256;
+            reply = hackUnlocked ? 'unlocked (type /hack help)' : 'wrong passphrase';
+        } else if (!hackUnlocked) {
+            reply = 'locked. /hack unlock <passphrase>';
+        } else {
+            const run = HACK_COMMANDS[command];
+            reply = run ? run(rest[0] === undefined ? '' : arg) : 'unknown command. /hack help';
+        }
+        centerText('golden-bonus', `🛠️ ${safe(reply)}`);
     }
-    document.body.appendChild(panel);
-    document.addEventListener('keydown', event => {
-        if (event.key === '`') panel.classList.toggle('open');
+
+    // The evil cookie sits next to the real one: clicking it costs 10% of your cookies and is not a normal click
+    const EVIL_COOKIE_LOSS = 0.1;
+    document.getElementById('evil-cookie').addEventListener('mousedown', event => {
+        event.stopPropagation();
+        const lost = cookieBalance.times(EVIL_COOKIE_LOSS).ceil();
+        setBalance(cookieBalance.minus(lost));
+        showFloatingText('golden-bonus', `😈 Evil cookie! -${fmt(lost)} 🍪`, event.clientX, event.clientY);
     });
 
     document.body.addEventListener('mousedown', event => {
