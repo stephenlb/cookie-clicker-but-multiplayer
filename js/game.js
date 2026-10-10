@@ -26,12 +26,36 @@
         previousCookieBalance = cookieBalance;
     }, 1000);
 
+    // A guy eating cookies: the pile on his plate and his chewing speed track cookies per second.
+    // Drop a real photo at assets/cookie-eater.jpg to replace the emoji guy.
+    const MAX_PILE = 24;
+    const eater = document.createElement('div');
+    eater.id = 'cookie-eater';
+    eater.innerHTML = '<div class=eater-pile></div><div class=eater-guy><img alt="" src="assets/cookie-eater.jpg"><span>🤤</span></div><div class=eater-caption></div>';
+    const eaterImg = eater.querySelector('img');
+    eaterImg.addEventListener('error', () => eaterImg.remove());
+    eaterImg.addEventListener('load', () => eater.classList.add('has-photo'));
+    document.body.appendChild(eater);
+    const eaterGuy = eater.querySelector('.eater-guy');
+    const eaterPile = eater.querySelector('.eater-pile');
+    const eaterCaption = eater.querySelector('.eater-caption');
+    function updateEater() {
+        const magnitude = cookiesPerSecond.gt(0) ? Math.max(0, cookiesPerSecond.log10()) : 0;
+        const pile = cookiesPerSecond.gt(0) ? Math.min(MAX_PILE, 1 + Math.round(magnitude * 2.5)) : 0;
+        eaterPile.textContent = '🍪'.repeat(pile);
+        eaterGuy.style.animationDuration = `${Math.max(0.12, 0.7 / (1 + magnitude / 2))}s`;
+        eaterCaption.textContent = cookiesPerSecond.gt(0) ? `${fmt(cookiesPerSecond)} cookies/sec incoming!` : 'Waiting for cookies…';
+    }
+    setInterval(updateEater, 1000);
+    updateEater();
+
     // Shop: spend cookies on upgrades. Prices grow 15% per level owned.
     const UPGRADES = [
         { id: 'finger',  name: 'Strong Finger',  desc: '+1 cookie per click',        cost: 50 },
         { id: 'grandma', name: 'Grandma',        desc: 'bakes 1 cookie/sec',         cost: 100 },
         { id: 'oven',    name: 'Oven',           desc: 'bakes 8 cookies/sec',        cost: 800 },
         { id: 'factory', name: 'Factory',        desc: 'bakes 50 cookies/sec',       cost: 5000 },
+        { id: 'cheese',  name: 'Cheese Wheel 🧀', desc: 'bakes 20 cookies/sec (it is gouda)', cost: 2500 },
         { id: 'message', name: 'Message Booster',   desc: '+10 cookies per chat message',   cost: 200 },
         { id: 'chat',    name: 'Word Booster',      desc: '+5 cookies per chat word',       cost: 300 },
         { id: 'char',    name: 'Character Booster', desc: '+1 cookie per chat character',   cost: 500 },
@@ -51,7 +75,7 @@
     const chatMessageValue = () => 10 + 10 * level('message');
     const chatWordValue = () => 5 * level('chat');
     const chatCharValue = () => level('char');
-    const bakedPerSecond = () => level('grandma') + 8 * level('oven') + 50 * level('factory')
+    const bakedPerSecond = () => level('grandma') + 8 * level('oven') + 50 * level('factory') + 20 * level('cheese')
         + 2e6 * level('planet') + 2e9 * level('dimension');
 
     const shopList = document.getElementById('upgrades');
@@ -63,8 +87,6 @@
         shopList.appendChild(btn);
         shopButtons[u.id] = btn;
     }
-    // Shop clicks should not count as cookie clicks
-    document.getElementById('shop').addEventListener('mousedown', event => event.stopPropagation());
 
     function renderShop() {
         for (const u of UPGRADES) {
@@ -193,12 +215,43 @@
     function safe(text) {
         return text.replace(/['"()<>]/g,'');
     }
+
+    // Leaderboards persisted in localStorage: chat messages and shared cookie clicks per user
+    const LEADERBOARD_SIZE = 5;
+    function createLeaderboard(storageKey, listSelector) {
+        const counts = JSON.parse(localStorage.getItem(storageKey) || "{}");
+        const list = document.querySelector(listSelector);
+        function render() {
+            const top = Object.entries(counts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, LEADERBOARD_SIZE);
+            list.replaceChildren(...top.map(([user, count]) => {
+                const li = document.createElement("li");
+                li.textContent = `${safe(user)} — ${count}`;
+                return li;
+            }));
+        }
+        render();
+        return user => {
+            const key = user.toLowerCase();
+            counts[key] = (counts[key] || 0) + 1;
+            localStorage.setItem(storageKey, JSON.stringify(counts));
+            render();
+        };
+    }
+    const recordChatter = createLeaderboard("leaderboard", "#leaderboard ol");
+    const recordClicker = createLeaderboard("click_leaderboard", "#click-leaderboard ol");
+
     function chatReceiver(data) {
         if (!data || typeof data.message !== "string") return;
         // Drop Twitch system notices and anonymous senders
         const user = String(data.user || "").trim();
         if (!user || user.toLowerCase() === "tmi.twitch.tv") return;
         const message = data.message;
+        recordChatter(user);
+        if (window.chessChat) window.chessChat(user, data.message);
+        if (window.minesweeperChat) window.minesweeperChat(user, data.message);
+        chatCommand(user, data.message);
 
         // textContent keeps user input from being interpreted as HTML
         const line = document.createElement("div");
@@ -222,6 +275,7 @@
         const wordCount = message.split(/\s+/).filter(Boolean).length;
         addCookies(chatMessageValue() + chatWordValue() * wordCount + chatCharValue() * message.length);
         chatSpawnTriggers(message);
+        floatEmoji(message);
         hydrateAlert(message);
         const match = message.match(/[a-fA-F0-9]{6}/);
         if (match) {
@@ -229,16 +283,51 @@
         }
     }
 
+    // Emoji in chat drift across the screen as big, wobbling, fading sprites
+    const EMOJI_PATTERN = /\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|[\u{1F3FB}-\u{1F3FF}])*/gu;
+    const MAX_EMOJI_PER_MESSAGE = 5;
+    const MAX_EMOJI_ON_SCREEN = 40;
+    function floatEmoji(message) {
+        const found = (message.match(EMOJI_PATTERN) || []).slice(0, MAX_EMOJI_PER_MESSAGE);
+        for (const emoji of found) {
+            if (document.querySelectorAll('.chat-emoji').length >= MAX_EMOJI_ON_SCREEN) return;
+            const w = window.innerWidth, h = window.innerHeight;
+            const size = 60 + Math.random() * 80;
+            const el = document.createElement('div');
+            el.className = 'chat-emoji';
+            el.textContent = emoji;
+            el.style.fontSize = `${size}px`;
+            el.style.left = `${Math.random() * (w - size)}px`;
+            el.style.top = `${h * 0.5 + Math.random() * h * 0.4}px`;
+            document.body.appendChild(el);
+
+            const drift = Math.random() * 300 - 150;
+            const spin = Math.random() * 60 - 30;
+            const rise = h * (0.5 + Math.random() * 0.4);
+            const anim = el.animate([
+                { transform: 'translate(0, 0) scale(0.2) rotate(0deg)', opacity: 0 },
+                { transform: `translate(${drift * 0.25}px, ${-rise * 0.15}px) scale(1.2) rotate(${spin * -0.5}deg)`, opacity: 1, offset: 0.12 },
+                { transform: `translate(${-drift * 0.5}px, ${-rise * 0.5}px) scale(1) rotate(${spin}deg)`, opacity: 1, offset: 0.55 },
+                { transform: `translate(${drift}px, ${-rise}px) scale(0.8) rotate(${-spin}deg)`, opacity: 0 },
+            ], { duration: 3500 + Math.random() * 2000, easing: 'ease-in-out' });
+            anim.onfinish = () => el.remove();
+        }
+    }
+
     // A lowercase "hydrate" in chat takes over the screen for a few seconds (click to dismiss)
     const HYDRATE_ALERT_MS = 4000;
+    const HYDRATE_COOLDOWN_MS = 60000; // at most one alert per minute
+    let hydrateLastAlert = -Infinity;
     let hydrateAlertEl = null;
     let hydrateAlertTimer = 0;
     function hydrateAlert(message) {
         if (!message.includes("hydrate")) return;
+        if (Date.now() - hydrateLastAlert < HYDRATE_COOLDOWN_MS) return;
+        hydrateLastAlert = Date.now();
         if (!hydrateAlertEl) {
             hydrateAlertEl = document.createElement("div");
             hydrateAlertEl.id = "hydrate-alert";
-            hydrateAlertEl.textContent = "HYDRATE SENT FROM YOUTUBE";
+            hydrateAlertEl.textContent = "HYDRATE 🥛";
             hydrateAlertEl.addEventListener("click", () => hydrateAlertEl.classList.remove("open"));
             document.body.append(hydrateAlertEl);
         }
@@ -255,6 +344,7 @@
         { pattern: /\bhydrat(e|ed|ion)\b|[💧🚰🚿💦🌊🥛🧋🍼]/iu, spawn: () => spawnWaterGlass(), last: 0 },
         { pattern: /\bboss\b/i,             spawn: () => spawnBossCookie(), last: 0 },
         { pattern: /\bboom\b/i,             spawn: () => damageFight?.(BOOM_DAMAGE), last: 0 },
+        { pattern: /\bcheese\b|🧀/iu,       spawn: () => spawnCheese(), last: 0 },
         { pattern: /\bgolden\b/i,           spawn: () => spawnGoldenCookie(), last: 0 },
         { pattern: /\bdiamonds?\b|💎/iu,     spawn: () => spawnDiamondCookie(), last: 0 },
     ];
@@ -266,6 +356,71 @@
             entry.spawn();
         }
     }
+
+    // Chat commands: "!name args". Each has a room-wide cooldown so one chatter cannot spam the screen,
+    // and a per-user cooldown on top for the ones that pay out.
+    const centerText = (className, text) => showFloatingText(className, text, window.innerWidth / 2, window.innerHeight / 2);
+    const COMMANDS = {
+        attack: { cooldown: 30, run: () => spawnAttackCookie(), help: 'cookie attack' },
+        cheese: { cooldown: 30, run: () => spawnCheese(), help: 'spawn a cheese' },
+        kevin:  { cooldown: 60, run: () => spawnKevin(), help: 'summon Kevin' },
+        tax:    { cooldown: 60, run: () => collectTax(), help: 'call the tax man' },
+        irs:    { cooldown: 120, run: () => callIrs(), help: 'call the IRS' },
+        gift:   { cooldown: 5, userCooldown: 120, run: user => {
+            addCookies(25);
+            centerText('golden-bonus', `${safe(user)} baked a gift! +25 🍪`);
+        }, help: 'free cookies (once every 2 min)' },
+        party:  { cooldown: 15, run: () => { floatEmoji('🎉🎊🥳🍪🎈'); }, help: 'party emoji' },
+        rain:   { cooldown: 15, run: () => { floatEmoji('🍪🍪🍪🍪🍪'); }, help: 'cookie rain' },
+        shake:  { cooldown: 15, run: () => {
+            document.body.animate([
+                { transform: 'translate(0, 0)' }, { transform: 'translate(-12px, 6px)' },
+                { transform: 'translate(10px, -8px)' }, { transform: 'translate(-8px, -4px)' },
+                { transform: 'translate(6px, 8px)' }, { transform: 'translate(0, 0)' },
+            ], { duration: 500, iterations: 2 });
+        }, help: 'shake the screen' },
+        color:  { cooldown: 5, run: (user, arg) => {
+            // Any CSS color name or hex code, e.g. "!color tomato" or "!color #ff8800"
+            const value = /^[0-9a-f]{6}$/i.test(arg) ? `#${arg}` : arg;
+            if (!arg || !CSS.supports('color', value)) return false;
+            document.body.style.backgroundColor = value;
+        }, help: 'change the background (!color teal)' },
+        buy:    { cooldown: 10, run: (user, arg) => {
+            // The room's cookies pay for it: "!buy oven"
+            const u = UPGRADES.find(x => x.id === arg.toLowerCase());
+            if (!u || (u.max && level(u.id) >= u.max) || cookieBalance.lt(upgradeCost(u))) return false;
+            buyUpgrade(u);
+            centerText('golden-bonus', `${safe(user)} bought ${u.name}!`);
+        }, help: `buy an upgrade (${UPGRADES.map(u => u.id).join(', ')})` },
+        stats:  { cooldown: 10, run: () => {
+            centerText('golden-bonus', `🍪 ${fmt(cookieBalance)} · ${fmt(cookiesPerSecond)}/s`);
+        }, help: 'show balance' },
+        help:   { cooldown: 20, run: () => {
+            centerText('golden-bonus', 'Commands: ' + Object.keys(COMMANDS).map(c => '!' + c).join(' ') + ' !red !blue !versus + chess moves');
+        }, help: 'list commands' },
+    };
+    const commandLast = {}; // command -> last run
+    const commandUserLast = {}; // command + user -> last run
+    function chatCommand(user, message) {
+        const match = message.trim().match(/^!(\w+)\s*(\S*)/);
+        const command = match && COMMANDS[match[1].toLowerCase()];
+        if (!command) return;
+        const name = match[1].toLowerCase();
+        const now = Date.now();
+        const userKey = `${name}:${user.toLowerCase()}`;
+        if (now - (commandLast[name] || 0) < command.cooldown * 1000) return;
+        if (now - (commandUserLast[userKey] || 0) < (command.userCooldown || 0) * 1000) return;
+        if (command.run(user, match[2]) === false) return;
+        commandLast[name] = now;
+        commandUserLast[userKey] = now;
+    }
+
+    // Clearing a minesweeper board pays the room
+    window.minesweeperWin = () => {
+        const prize = Decimal.max(1000, cookieBalance.times(0.05).round());
+        addCookies(prize);
+        centerText('golden-bonus', `Minesweeper cleared! +${fmt(prize)} 🍪`);
+    };
 
     // Versus: chat picks a team with !red / !blue, then !versus starts a round.
     // While a round runs, each message scores for its sender's team (1 point plus 1 per word, up to 5).
@@ -325,17 +480,33 @@
         cookies = D(cookies).times(1 + Math.floor(cookieBalance.div(1000000).plus(1).log10()));
         if (Date.now() < hydratedUntil) cookies = cookies.times(HYDRATED_MULTIPLIER);
         setBalance(cookieBalance.plus(cookies));
-        let rand = Math.random() * 10 - Math.random() * 10;
-        let scaleRand = Math.round(Math.random() * 10) / 6;
-        cookieBalanceDisplay.style.top = `${Math.random()*10}px`;
-        cookieBalanceDisplay.style.transform = `rotate(${rand}deg) scale(${scaleRand})`;
+        popBalance();
     }
+
+    // Short springy pop on every gain; restarting the animation keeps rapid gains snappy
+    function popBalance() {
+        const tilt = Math.random() * 4 - 2;
+        cookieBalanceDisplay.animate([
+            { transform: 'scale(1) rotate(0deg)' },
+            { transform: `scale(1.18) rotate(${tilt}deg)`, offset: 0.35 },
+            { transform: 'scale(1) rotate(0deg)' },
+        ], { duration: 220, easing: 'ease-out' });
+    }
+
+    // The shown number eases toward the real balance instead of jumping
+    let displayedBalance = cookieBalance;
+    function tickBalanceDisplay() {
+        const diff = cookieBalance.minus(displayedBalance);
+        displayedBalance = diff.abs().lt(1) ? cookieBalance : displayedBalance.plus(diff.times(0.2));
+        cookieBalanceDisplay.textContent = fmt(displayedBalance.round());
+        requestAnimationFrame(tickBalanceDisplay);
+    }
+    requestAnimationFrame(tickBalanceDisplay);
 
     function setBalance(balance) {
         // Round the cookies because cookies are round thank you @theavebel
         cookieBalance = balance.round();
         if (cookieBalance.lt(0)) cookieBalance = D(0);
-        cookieBalanceDisplay.innerHTML = fmt(cookieBalance);
         localStorage.setItem("cookies", cookieBalance.toString());
     }
 
@@ -345,15 +516,24 @@
         return isNaN(saved.mantissa) || saved.lt(0) ? D(0) : saved;
     }
 
-    function cookieClickTransmit(hash) {
+    // Clicks are shared over PubNub; real clicks carry the player's name
+    const playerName = (localStorage.getItem("player_name")
+        || prompt("Your name for the click leaderboard?")
+        || "anonymous").trim().slice(0, 20);
+    localStorage.setItem("player_name", playerName);
+
+    function cookieClickTransmit(hash, user) {
         pubnub.publish({
             channel: COOKIE_CHANNEL,
-            message: hash,
+            message: user ? { ...hash, user } : hash,
         });
     }
     async function cookieClickReceiver(hash) {
         let verified = await verify(hash);
         //console.log(`Cookie Click Verified: ${verified}`);
+        if (verified && typeof hash.user === "string" && hash.user.trim()) {
+            recordClicker(hash.user.trim().slice(0, 20));
+        }
         addCookies(1);
     }
 
@@ -362,13 +542,77 @@
         messages: cookieClickReceiver,
     });
 
+    // Multiplayer event bus: presence, emoji reactions and golden cookie announcements.
+    // Only messages newer than page load are handled (the stream replays history).
+    const EVENTS_CHANNEL = "cookie-clicker-events";
+    const PRESENCE_INTERVAL_MS = 5000;
+    const PRESENCE_TIMEOUT_MS = 15000;
+    const REACTION_COOLDOWN_MS = 500;
+    const GRAB_GIFT = 50; // everyone else gets this when a player grabs a golden cookie
+    const playerId = crypto.randomUUID();
+    const players = new Map(); // id -> { name, seen }
+    const playersDisplay = document.getElementById("players");
+
+    const sendEvent = event => pubnub.publish({
+        channel: EVENTS_CHANNEL,
+        message: { ...event, id: playerId, name: playerName, at: Date.now() },
+    });
+    const sendPresence = () => sendEvent({ type: "hello" });
+
+    function renderPlayers() {
+        const now = Date.now();
+        for (const [id, p] of players) if (now - p.seen > PRESENCE_TIMEOUT_MS) players.delete(id);
+        const names = [...players.values()].map(p => safe(p.name));
+        playersDisplay.textContent = `👥 ${names.length} online: ${names.join(", ")}`;
+    }
+
+    function eventReceiver(event) {
+        if (!event || typeof event.id !== "string" || typeof event.name !== "string") return;
+        if (event.at < pageStartedAt) return;
+        const name = event.name.trim().slice(0, 20) || "anonymous";
+        players.set(event.id, { name, seen: Date.now() });
+        renderPlayers();
+        if (event.id === playerId) return;
+        if (event.type === "emoji" && typeof event.emoji === "string") {
+            floatEmoji(event.emoji.slice(0, 16));
+        } else if (event.type === "grab") {
+            addCookies(GRAB_GIFT);
+            showFloatingText('golden-bonus', `${safe(name)} grabbed a golden cookie! +${GRAB_GIFT} 🍪 for you`, window.innerWidth / 2, window.innerHeight / 3);
+        }
+    }
+
+    const pageStartedAt = Date.now();
+    pubnub.subscribe({
+        channel: EVENTS_CHANNEL,
+        timetoken: String(pageStartedAt * 10000),
+        messages: eventReceiver,
+    });
+    sendPresence();
+    setInterval(sendPresence, PRESENCE_INTERVAL_MS);
+    setInterval(renderPlayers, PRESENCE_INTERVAL_MS);
+
+    // Reaction bar: click an emoji to float it across everyone's screen
+    const reactBar = document.getElementById("reactions");
+    let lastReaction = 0;
+    for (const emoji of ["🍪", "🔥", "😂", "❤️", "🎉", "💧"]) {
+        const btn = document.createElement("button");
+        btn.textContent = emoji;
+        btn.addEventListener("click", () => {
+            if (Date.now() - lastReaction < REACTION_COOLDOWN_MS) return;
+            lastReaction = Date.now();
+            floatEmoji(emoji);
+            sendEvent({ type: "emoji", emoji });
+        });
+        reactBar.append(btn);
+    }
+
     let cookie = document.getElementById("cookie");
     setInterval( click, 1000);
     async function click(event) {
         //console.log('clicked');
         await nonceFinder(DIFFICULTY, hash => {
             //console.log(hash);
-            cookieClickTransmit(hash);
+            cookieClickTransmit(hash, event && playerName);
         });
     }
 
@@ -383,9 +627,24 @@
     function spawnDiamondCookie() {
         spawnBonusCookie('golden-cookie diamond-cookie', DIAMOND_LIFETIME, 0.5, 5000);
     }
-    function spawnBonusCookie(className, lifetime, balanceShare, minBonus) {
+    // Cheese: a rarer, shorter-lived golden cookie that pays out with a cheesy pun
+    const CHEESE_LIFETIME = 6000;
+    const CHEESE_PUNS = ['Gouda catch!', 'Say cheese!', 'Nacho cheese!', 'Brie-lliant!', 'Feta late than never!', 'Cheddar believe it!', 'Swiss-ly done!', "That's un-brie-lievable!"];
+    function spawnCheese() {
+        spawnBonusCookie('golden-cookie cheese-cookie', CHEESE_LIFETIME, 0.15, 250, CHEESE_PUNS);
+    }
+    function scheduleCheese() {
+        setTimeout(() => {
+            spawnCheese();
+            scheduleCheese();
+        }, 60000 + Math.random() * 60000);
+    }
+    scheduleCheese();
+
+    function spawnBonusCookie(className, lifetime, balanceShare, minBonus, puns) {
         const golden = document.createElement('button');
         golden.className = className;
+        if (puns) golden.textContent = '🧀';
         golden.style.left = `${Math.random() * (window.innerWidth - GOLDEN_SIZE)}px`;
         golden.style.top = `${Math.random() * (window.innerHeight - GOLDEN_SIZE)}px`;
 
@@ -396,13 +655,13 @@
         const expire = setTimeout(dismiss, lifetime);
 
         golden.addEventListener('mousedown', event => {
-            event.stopPropagation(); // not a regular cookie click
             clearTimeout(expire);
             const bonus = Decimal.max(minBonus, cookieBalance.times(balanceShare).round());
             addCookies(bonus);
+            sendEvent({ type: "grab" });
             const pop = document.createElement('div');
             pop.className = 'golden-bonus';
-            pop.textContent = `+${fmt(bonus)} 🍪`;
+            pop.textContent = `${puns ? puns[Math.floor(Math.random() * puns.length)] + ' ' : ''}+${fmt(bonus)} ${puns ? '🧀' : '🍪'}`;
             pop.style.left = `${event.clientX}px`;
             pop.style.top = `${event.clientY}px`;
             document.body.appendChild(pop);
@@ -415,11 +674,50 @@
         setTimeout(() => {
             spawnGoldenCookie();
             scheduleGoldenCookie();
+        }, 15000 + Math.random() * 30000);
+    }
+    scheduleGoldenCookie();
+
+    // Weapons: pick one with the button in the corner; it sets your damage against monster cookies
+    const WEAPONS = [
+        { id: 'fist', icon: '👊', name: 'Fist', damage: 1 },
+        { id: 'slingshot', icon: '🏹', name: 'Bow', damage: 2 },
+        { id: 'pistol', icon: '🔫', name: 'Pistol', damage: 3 },
+        { id: 'sword', icon: '🗡️', name: 'Sword', damage: 4 },
+        { id: 'laser', icon: '⚡', name: 'Lightning', damage: 6 },
+    ];
+    let weapon = WEAPONS.find(w => w.id === localStorage.getItem('weapon')) || WEAPONS[0];
+    const weaponBtn = document.createElement('button');
+    weaponBtn.id = 'weapon-btn';
+    const weaponMenu = document.createElement('div');
+    weaponMenu.id = 'weapon-menu';
+    function equipWeapon(w) {
+        weapon = w;
+        localStorage.setItem('weapon', w.id);
+        weaponBtn.textContent = w.icon;
+        weaponBtn.title = `${w.name} (${w.damage} dmg)`;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><text y="26" font-size="26">${w.icon}</text></svg>`;
+        document.documentElement.style.setProperty('--weapon-cursor', `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, crosshair`);
+        for (const item of weaponMenu.children) item.classList.toggle('selected', item.dataset.id === w.id);
+        weaponMenu.classList.remove('open');
+    }
+    for (const w of WEAPONS) {
+        const item = document.createElement('button');
+        item.dataset.id = w.id;
+        item.textContent = `${w.icon} ${w.name} · ${w.damage} dmg`;
+        item.addEventListener('click', () => equipWeapon(w));
+        weaponMenu.appendChild(item);
+    }
+    weaponBtn.addEventListener('click', () => weaponMenu.classList.toggle('open'));
+    for (const el of [weaponBtn, weaponMenu]) el.addEventListener('mousedown', event => event.stopPropagation());
+    document.body.append(weaponMenu, weaponBtn);
+    equipWeapon(weapon);
 
     // Attack cookies fly in from a screen edge toward the big cookie.
     // Click one to swat it for a small reward; if it lands, it steals cookies.
     const ATTACK_SIZE = 60;
     const ATTACK_TRAVEL_MS = 5000;
+    const ATTACK_HP = 3;
     function showFloatingText(className, text, x, y) {
         const pop = document.createElement('div');
         pop.className = className;
@@ -455,11 +753,14 @@
             attacker.remove();
         }, ATTACK_TRAVEL_MS);
 
+        let hp = ATTACK_HP;
         attacker.addEventListener('mousedown', event => {
-            event.stopPropagation(); // not a regular cookie click
+            showFloatingText('golden-bonus', weapon.icon, event.clientX, event.clientY);
+            hp -= weapon.damage;
+            if (hp > 0) return;
             clearTimeout(landing);
             addCookies(5);
-            showFloatingText('golden-bonus', 'Swatted! +5 🍪', event.clientX, event.clientY);
+            showFloatingText('golden-bonus', 'Swatted! +5 🍪', event.clientX, event.clientY - 30);
             attacker.remove();
         });
     }
@@ -467,6 +768,9 @@
         setTimeout(() => {
             spawnAttackCookie();
             scheduleAttackCookie();
+        }, 20000 + Math.random() * 30000);
+    }
+    scheduleAttackCookie();
 
     // Boss-style fights: click the cookie repeatedly to drain its HP before time runs out.
     // Used by boss cookies and the IRS. Only one fight at a time; returns false if busy.
@@ -521,8 +825,8 @@
             hit({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }, damage);
         };
         enemy.addEventListener('mousedown', event => {
-            event.stopPropagation(); // not a regular cookie click
-            hit(event, 1);
+            showFloatingText('golden-bonus', weapon.icon, event.clientX, event.clientY);
+            hit(event, weapon.damage);
         });
         return true;
     }
@@ -553,12 +857,6 @@
         }, 90000 + Math.random() * 90000);
     }
     scheduleBossCookie();
-        }, 20000 + Math.random() * 30000);
-    }
-    scheduleAttackCookie();
-        }, 15000 + Math.random() * 30000);
-    }
-    scheduleGoldenCookie();
     function scheduleDiamondCookie() {
         setTimeout(() => {
             spawnDiamondCookie();
@@ -575,20 +873,19 @@
     let hydratedUntil = 0;
     setInterval(() => {
         const left = Math.ceil((hydratedUntil - Date.now()) / 1000);
-        buffDisplay.textContent = left > 0 ? `💧 Hydrated x${HYDRATED_MULTIPLIER} for ${left}s` : '';
+        buffDisplay.textContent = left > 0 ? `🥛 Hydrated x${HYDRATED_MULTIPLIER} for ${left}s` : '';
     }, 250);
     function spawnWaterGlass() {
         const glass = document.createElement('button');
         glass.className = 'water-glass';
-        glass.title = 'A glass of water';
+        glass.title = 'A glass of milk';
         glass.style.left = `${Math.random() * (window.innerWidth - 44)}px`;
         glass.style.top = `${Math.random() * (window.innerHeight - 64)}px`;
         const expire = setTimeout(() => glass.remove(), WATER_LIFETIME_MS);
         glass.addEventListener('mousedown', event => {
-            event.stopPropagation(); // not a regular cookie click
             clearTimeout(expire);
             hydratedUntil = Date.now() + HYDRATED_MS;
-            showFloatingText('golden-bonus', 'Glug glug! Hydrated 💧', event.clientX, event.clientY);
+            showFloatingText('golden-bonus', 'Glug glug! Hydrated 🥛', event.clientX, event.clientY);
             glass.remove();
         });
         document.body.appendChild(glass);
@@ -845,7 +1142,6 @@
         const goal = task.goal();
         const card = document.createElement('div');
         card.id = 'kevin';
-        card.addEventListener('mousedown', event => event.stopPropagation()); // not a regular cookie click
         const title = document.createElement('strong');
         title.textContent = '🧑 Kevin says:';
         const body = document.createElement('div');
@@ -894,6 +1190,7 @@
         spawn: {
             golden: spawnGoldenCookie,
             diamond: spawnDiamondCookie,
+            cheese: spawnCheese,
             attack: spawnAttackCookie,
             boss: spawnBossCookie,
             water: spawnWaterGlass,

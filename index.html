@@ -4,6 +4,14 @@
 <div id=bg-cookies><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div><div class=bg-cookie></div></div>
 <div id=layout>
     <div id=chat-column>
+        <div id=leaderboard class=leaderboard>
+            <strong>Chat leaderboard</strong>
+            <ol></ol>
+        </div>
+        <div id=click-leaderboard class=leaderboard>
+            <strong>Top clickers</strong>
+            <ol></ol>
+        </div>
         <div id=chat>
             <!-- Chat appears here -->
         </div>
@@ -12,7 +20,10 @@
             <ul>
                 <li><code>!red</code> / <code>!blue</code> join a versus team</li>
                 <li><code>!versus</code> start a 60s team battle (messages score)</li>
-                <li><code>hydrate</code> 💧 water glass, <code>golden</code>, <code>diamond</code> 💎, <code>boss</code> spawn cookies</li>
+                <li><code>hydrate</code> 💧 water glass, <code>golden</code>, <code>cheese</code> 🧀, <code>diamond</code> 💎, <code>boss</code> spawn cookies</li>
+                <li><code>!gift</code> <code>!attack</code> <code>!kevin</code> <code>!tax</code> <code>!irs</code> <code>!party</code> <code>!rain</code> <code>!shake</code> <code>!color teal</code> <code>!buy oven</code> <code>!stats</code> <code>!help</code></li>
+                <li>Chess: vote with <code>!e4</code>, <code>!Nf3</code>, <code>!e2e4</code></li>
+                <li>Minesweeper: <code>!dig e4</code> / <code>!flag e4</code></li>
                 <li>A 6-digit hex code like <code>ff8800</code> changes the background</li>
             </ul>
         </div>
@@ -22,13 +33,27 @@
             <h1>Cookie Clicker but Multiplayer</h1>
             <h1>🍪 <span id=cookies>0</span></h1>
             <h2>🍪 <span id=cookiesPerSecond>0</span></h2>
+            <h3 id=players></h3>
             <h3 id=taxTimer></h3>
             <h3 id=buff></h3>
             <h3 id=versus></h3>
             <button id=cookie><img src="assets/cookieart.png"></button>
+            <div id=reactions></div>
         </div>
     </div>
     <div id=shop>
+        <div id=chess>
+            <div class=chess-status></div>
+            <div class=chess-board></div>
+            <ol class=chess-votes></ol>
+            <div class=chess-score></div>
+        </div>
+        <div id=minesweeper class=side-panel>
+            <div class=mines-status></div>
+            <div class=mines-grid></div>
+            <ol class=mines-votes></ol>
+            <div class=mines-score></div>
+        </div>
         <h2>Shop</h2>
         <div id=upgrades><!-- Upgrades appear here --></div>
         <h2>Achievements</h2>
@@ -41,4 +66,6 @@
 <script src=js/break_infinity.min.js></script>
 <script src=js/pubnub.js></script>
 <script src=js/hashcache.js></script>
+<script src=js/chess.js></script>
+<script src=js/minesweeper.js></script>
 <script src=js/game.js></script>

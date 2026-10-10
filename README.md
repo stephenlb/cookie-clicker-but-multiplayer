@@ -46,9 +46,8 @@ Made using **PubNub**
 - [ ] hidden easter egg (secrets)
 
 ## Multiplayer
-- [ ] leaderboard PRO_Stumblr
-- [ ] leaderboard
-- [ ] names of people who clicked cookie
+- [x] leaderboard PRO_Stumblr
+- [x] names of people who clicked cookie
 - [ ] multiplayer with pubnub
 - [ ] RATE LIMIT hash caching to prevent cheating
 
@@ -71,11 +70,10 @@ Made using **PubNub**
 - [ ] cookie image
 - [ ] Pixelate the FONT
 - [ ] custom user font
-- [ ] dark mod3
 - [ ] when you click on the cookie it changes color
 
 ## Code
-- [ ] organize code
+- [x] organize code
 - [ ] https://popcat.click/ inspiration
 
 ## Wiki
